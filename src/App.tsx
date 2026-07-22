@@ -18,6 +18,7 @@ import StationaryPortal from "@/pages/StationaryPortal";
 import BranchesPage from "@/pages/BranchesPage";
 import ClusterManagement from "@/pages/ClusterManagement";
 import ClusterDashboard from "@/pages/ClusterDashboard";
+import ClusterOrders from "@/pages/ClusterOrders";
 import TicketFormConfig from "@/pages/TicketFormConfig";
 import NotFound from "@/pages/NotFound";
 
@@ -171,7 +172,7 @@ export default function App() {
         path="/cluster/orders"
         element={
           <ProtectedRoute>
-            <ClusterDashboard />
+            <ClusterOrders />
           </ProtectedRoute>
         }
       />

@@ -1,14 +1,13 @@
 import { useState } from "react";
 import { trpc } from "@/providers/trpc";
-import { Plus, Pencil, X, Loader2, Save, Users, Building2 } from "lucide-react";
+import { Plus, Pencil, Trash2, X, Loader2, Save, Users, Building2 } from "lucide-react";
 
 export default function BranchesPage() {
   const utils = trpc.useUtils();
   const { data, isLoading } = trpc.branch.list.useQuery({ page: 1, limit: 100 });
   const createBranch = trpc.branch.create.useMutation({ onSuccess: () => { utils.branch.list.invalidate(); utils.branch.listAll.invalidate(); close(); } });
   const updateBranch = trpc.branch.update.useMutation({ onSuccess: () => { utils.branch.list.invalidate(); utils.branch.listAll.invalidate(); close(); } });
-  const deleteBranch = trpc.branch.delete.useMutation({ onSuccess: () => utils.branch.list.invalidate() });
-  void deleteBranch;
+  const deleteBranch = trpc.branch.delete.useMutation({ onSuccess: () => { utils.branch.list.invalidate(); utils.branch.listAll.invalidate(); } });
 
   const [show, setShow] = useState(false);
   const [editing, setEditing] = useState<string | null>(null);
@@ -59,6 +58,7 @@ export default function BranchesPage() {
                   </div>
                   <div className="flex gap-1">
                     <button onClick={(e) => { e.stopPropagation(); open(b); }} className="p-1.5 hover:bg-blue-50 rounded-lg text-gray-400 hover:text-blue-600"><Pencil className="w-3.5 h-3.5" /></button>
+                    <button onClick={(e) => { e.stopPropagation(); if (confirm(`Delete branch "${b.name}"?`)) deleteBranch.mutate({ id: b.id }); }} className="p-1.5 hover:bg-red-50 rounded-lg text-gray-400 hover:text-red-600"><Trash2 className="w-3.5 h-3.5" /></button>
                   </div>
                 </div>
               ))}

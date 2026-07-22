@@ -9,9 +9,9 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   const isAdmin = user?.type === "admin";
 
   return (
-    <div className="min-h-screen bg-gray-50 flex">
+    <div className="h-screen bg-gray-50 flex overflow-hidden">
       {/* Desktop Sidebar */}
-      <div className="hidden lg:block">
+      <div className="hidden lg:block h-screen sticky top-0 flex-shrink-0">
         <Sidebar isAdmin={isAdmin} mobile={false} onClose={() => {}} />
       </div>
 
@@ -29,7 +29,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
       )}
 
       {/* Main Content */}
-      <div className="flex-1 flex flex-col min-w-0">
+      <div className="flex-1 flex flex-col min-w-0 h-screen overflow-hidden">
         <Header onMenuClick={() => setSidebarOpen(true)} />
         <main className="flex-1 p-4 lg:p-6 overflow-auto">
           <div className="max-w-7xl mx-auto">
