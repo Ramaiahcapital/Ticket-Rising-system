@@ -9,6 +9,7 @@ import {
   notifyAllAdmins,
   createAuditLog,
 } from "./lib/utils.js";
+import { sendEmailFromUser } from "./email-service.js";
 import type { TrpcContext } from "./context.js";
 
 function getActorName(ctx: { user: TrpcContext["user"] }): string {
@@ -261,6 +262,44 @@ export const ticketRouter = createRouter({
         type: "ticket_created",
         ticketId,
       });
+
+      // Send email from branch user to all admins
+      try {
+        const supabase = getSupabaseAdmin();
+        const { data: admins } = await supabase
+          .from("profiles")
+          .select("email")
+          .eq("role", "admin")
+          .eq("isActive", true);
+        const { data: sender } = await supabase
+          .from("profiles")
+          .select("branchName, email")
+          .eq("id", ctx.user.id)
+          .maybeSingle();
+        if (admins?.length && sender?.email) {
+          const branchLabel = sender.branchName || "Branch";
+          for (const admin of admins) {
+            if (admin.email) {
+              await sendEmailFromUser(
+                ctx.user.id,
+                admin.email,
+                `New Ticket: ${ticketNumber} - ${input.subject}`,
+                `<div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;">
+                  <h2 style="color:#DC2626;">New Support Ticket</h2>
+                  <table style="width:100%;border-collapse:collapse;">
+                    <tr><td style="padding:8px;font-weight:bold;border-bottom:1px solid #eee;">Ticket #</td><td style="padding:8px;border-bottom:1px solid #eee;">${ticketNumber}</td></tr>
+                    <tr><td style="padding:8px;font-weight:bold;border-bottom:1px solid #eee;">Subject</td><td style="padding:8px;border-bottom:1px solid #eee;">${input.subject}</td></tr>
+                    <tr><td style="padding:8px;font-weight:bold;border-bottom:1px solid #eee;">Branch</td><td style="padding:8px;border-bottom:1px solid #eee;">${branchLabel}</td></tr>
+                    <tr><td style="padding:8px;font-weight:bold;border-bottom:1px solid #eee;">Department</td><td style="padding:8px;border-bottom:1px solid #eee;">${input.department || "Not specified"}</td></tr>
+                    <tr><td style="padding:8px;font-weight:bold;border-bottom:1px solid #eee;">Description</td><td style="padding:8px;border-bottom:1px solid #eee;">${input.description}</td></tr>
+                  </table>
+                  <p style="margin-top:16px;color:#666;">This ticket was raised from the Ramaiah Capital Ticket Management System.</p>
+                </div>`
+              );
+            }
+          }
+        }
+      } catch (e) { console.error("Ticket email failed:", e); }
 
       return { id: ticketId, ticketNumber };
     }),

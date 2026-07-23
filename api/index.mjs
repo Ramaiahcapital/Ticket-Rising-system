@@ -1,3 +1,169 @@
+var __defProp = Object.defineProperty;
+var __getOwnPropNames = Object.getOwnPropertyNames;
+var __esm = (fn, res) => function __init() {
+  return fn && (res = (0, fn[__getOwnPropNames(fn)[0]])(fn = 0)), res;
+};
+var __export = (target, all) => {
+  for (var name in all)
+    __defProp(target, name, { get: all[name], enumerable: true });
+};
+
+// server/lib/env.ts
+import "../node_modules/dotenv/config.js";
+function required(name) {
+  const value = process.env[name];
+  if (!value && process.env.NODE_ENV === "production") {
+    throw new Error(`Missing required environment variable: ${name}`);
+  }
+  return value ?? "";
+}
+var env;
+var init_env = __esm({
+  "server/lib/env.ts"() {
+    env = {
+      isProduction: process.env.NODE_ENV === "production",
+      supabaseUrl: required("SUPABASE_URL"),
+      supabaseAnonKey: required("SUPABASE_ANON_KEY"),
+      supabaseServiceRoleKey: required("SUPABASE_SERVICE_ROLE_KEY"),
+      googleClientId: process.env.GOOGLE_CLIENT_ID || "",
+      googleClientSecret: process.env.GOOGLE_CLIENT_SECRET || "",
+      googleRedirectUri: process.env.GOOGLE_REDIRECT_URI || "http://localhost:3000/api/google/callback"
+    };
+  }
+});
+
+// server/lib/supabase.ts
+var supabase_exports = {};
+__export(supabase_exports, {
+  getSupabaseAdmin: () => getSupabaseAdmin,
+  getSupabaseBrowser: () => getSupabaseBrowser
+});
+import { createClient } from "../node_modules/@supabase/supabase-js/dist/index.mjs";
+function getSupabaseAdmin() {
+  if (!adminClient) {
+    adminClient = createClient(env.supabaseUrl, env.supabaseServiceRoleKey, {
+      auth: {
+        autoRefreshToken: false,
+        persistSession: false
+      }
+    });
+  }
+  return adminClient;
+}
+function getSupabaseBrowser() {
+  return createClient(env.supabaseUrl, env.supabaseAnonKey, {
+    auth: {
+      persistSession: true,
+      autoRefreshToken: true
+    }
+  });
+}
+var adminClient;
+var init_supabase = __esm({
+  "server/lib/supabase.ts"() {
+    init_env();
+    adminClient = null;
+  }
+});
+
+// server/email-service.ts
+var email_service_exports = {};
+__export(email_service_exports, {
+  disconnectGoogle: () => disconnectGoogle,
+  exchangeCodeForTokens: () => exchangeCodeForTokens,
+  getGoogleAuthUrl: () => getGoogleAuthUrl,
+  getGoogleEmail: () => getGoogleEmail,
+  isUserConnected: () => isUserConnected,
+  sendEmailFromUser: () => sendEmailFromUser
+});
+import { google } from "../node_modules/googleapis/build/src/index.js";
+function getGoogleAuthUrl(userId) {
+  return oAuth2Client.generateAuthUrl({
+    access_type: "offline",
+    prompt: "consent",
+    scope: [
+      "https://www.googleapis.com/auth/gmail.send",
+      "https://www.googleapis.com/auth/userinfo.email"
+    ],
+    state: userId
+  });
+}
+async function exchangeCodeForTokens(code) {
+  const { tokens } = await oAuth2Client.getToken(code);
+  return tokens;
+}
+async function getGoogleEmail(accessToken) {
+  const oauth2 = google.oauth2({ version: "v2", auth: accessToken });
+  const { data } = await oauth2.userinfo.get();
+  return data.email || "";
+}
+async function refreshIfNeeded(userId) {
+  const supabase = getSupabaseAdmin();
+  const { data: auth } = await supabase.from("google_auth").select("*").eq("userId", userId).maybeSingle();
+  if (!auth) throw new Error("Google account not connected");
+  const expiry = new Date(auth.tokenExpiry).getTime();
+  if (Date.now() < expiry - 6e4) {
+    return auth.accessToken;
+  }
+  oAuth2Client.setCredentials({ refresh_token: auth.refreshToken });
+  const { credentials } = await oAuth2Client.refreshAccessToken();
+  await supabase.from("google_auth").update({
+    accessToken: credentials.access_token || auth.accessToken,
+    tokenExpiry: new Date(credentials.expiry_date ?? Date.now() + 36e5).toISOString(),
+    updatedAt: (/* @__PURE__ */ new Date()).toISOString()
+  }).eq("userId", userId);
+  return credentials.access_token || auth.accessToken;
+}
+async function sendEmailFromUser(userId, to, subject, htmlBody) {
+  try {
+    const accessToken = await refreshIfNeeded(userId);
+    const supabase = getSupabaseAdmin();
+    const { data: auth } = await supabase.from("google_auth").select("googleEmail").eq("userId", userId).maybeSingle();
+    if (!auth) return false;
+    const fromEmail = auth.googleEmail;
+    const RFC2822Message = [
+      `From: ${fromEmail}`,
+      `To: ${to}`,
+      `Subject: ${subject}`,
+      `MIME-Version: 1.0`,
+      `Content-Type: text/html; charset=UTF-8`,
+      ``,
+      htmlBody
+    ].join("\r\n");
+    const encodedMessage = Buffer.from(RFC2822Message).toString("base64").replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+    const gmail = google.gmail({ version: "v1", auth: accessToken });
+    await gmail.users.messages.send({
+      userId: "me",
+      requestBody: { raw: encodedMessage }
+    });
+    return true;
+  } catch (err) {
+    console.error("Failed to send email:", err);
+    return false;
+  }
+}
+async function isUserConnected(userId) {
+  const supabase = getSupabaseAdmin();
+  const { data } = await supabase.from("google_auth").select("id").eq("userId", userId).maybeSingle();
+  return !!data;
+}
+async function disconnectGoogle(userId) {
+  const supabase = getSupabaseAdmin();
+  await supabase.from("google_auth").delete().eq("userId", userId);
+}
+var oAuth2Client;
+var init_email_service = __esm({
+  "server/email-service.ts"() {
+    init_supabase();
+    init_env();
+    oAuth2Client = new google.auth.OAuth2(
+      env.googleClientId,
+      env.googleClientSecret,
+      env.googleRedirectUri
+    );
+  }
+});
+
 // server/vercel-handler.ts
 import { Hono } from "../node_modules/hono/dist/index.js";
 import { bodyLimit } from "../node_modules/hono/dist/middleware/body-limit/index.js";
@@ -58,41 +224,10 @@ var authRouter = createRouter({
 
 // server/branch-user-router.ts
 import { z } from "../node_modules/zod/index.js";
-
-// server/lib/supabase.ts
-import { createClient } from "../node_modules/@supabase/supabase-js/dist/index.mjs";
-
-// server/lib/env.ts
-import "../node_modules/dotenv/config.js";
-function required(name) {
-  const value = process.env[name];
-  if (!value && process.env.NODE_ENV === "production") {
-    throw new Error(`Missing required environment variable: ${name}`);
-  }
-  return value ?? "";
-}
-var env = {
-  isProduction: process.env.NODE_ENV === "production",
-  supabaseUrl: required("SUPABASE_URL"),
-  supabaseAnonKey: required("SUPABASE_ANON_KEY"),
-  supabaseServiceRoleKey: required("SUPABASE_SERVICE_ROLE_KEY")
-};
-
-// server/lib/supabase.ts
-var adminClient = null;
-function getSupabaseAdmin() {
-  if (!adminClient) {
-    adminClient = createClient(env.supabaseUrl, env.supabaseServiceRoleKey, {
-      auth: {
-        autoRefreshToken: false,
-        persistSession: false
-      }
-    });
-  }
-  return adminClient;
-}
+init_supabase();
 
 // server/lib/utils.ts
+init_supabase();
 async function generateTicketNumber() {
   const supabase = getSupabaseAdmin();
   const { data: formatRows } = await supabase.from("system_settings").select("value").eq("key", "ticket_number_format").maybeSingle();
@@ -420,6 +555,7 @@ var branchUserRouter = createRouter({
 
 // server/branch-router.ts
 import { z as z2 } from "../node_modules/zod/index.js";
+init_supabase();
 var branchRouter = createRouter({
   list: adminQuery.input(
     z2.object({
@@ -544,6 +680,9 @@ var branchRouter = createRouter({
 
 // server/cluster-router.ts
 import { z as z3 } from "../node_modules/zod/index.js";
+init_supabase();
+init_env();
+init_email_service();
 var clusterRouter = createRouter({
   // ---------------- Admin: cluster CRUD ----------------
   list: adminQuery.input(z3.object({ includeInactive: z3.boolean().default(false) }).optional()).query(async ({ input }) => {
@@ -862,6 +1001,37 @@ var clusterRouter = createRouter({
     const { error } = await supabase.from("stationary_orders").update({ clusterApprovedAt: (/* @__PURE__ */ new Date()).toISOString(), clusterApprovedBy: user.id }).eq("id", input.orderId).eq("clusterId", user.clusterId);
     if (error) throw new Error(error.message);
     await createAuditLog({ userId: user.id, userType: "cluster", userName: user.name || "Cluster Admin", action: "approve_cluster_order", entityType: "stationaryOrder", entityId: input.orderId });
+    try {
+      const { data: admins } = await supabase.from("profiles").select("email").eq("role", "admin").eq("isActive", true);
+      const { data: order } = await supabase.from("stationary_orders").select("branchId").eq("id", input.orderId).maybeSingle();
+      const { data: branch } = order?.branchId ? await supabase.from("branches").select("name").eq("id", order.branchId).maybeSingle() : { data: null };
+      const { data: cluster } = user.clusterId ? await supabase.from("clusters").select("name").eq("id", user.clusterId).maybeSingle() : { data: null };
+      if (admins?.length) {
+        const clusterLabel = cluster?.name || "Cluster";
+        const branchLabel = branch?.name || "Branch";
+        for (const admin of admins) {
+          if (admin.email) {
+            await sendEmailFromUser(
+              user.id,
+              admin.email,
+              `Stationary Order Approved by ${clusterLabel}`,
+              `<div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;">
+                  <h2 style="color:#16A34A;">Order Approved</h2>
+                  <table style="width:100%;border-collapse:collapse;">
+                    <tr><td style="padding:8px;font-weight:bold;border-bottom:1px solid #eee;">Branch</td><td style="padding:8px;border-bottom:1px solid #eee;">${branchLabel}</td></tr>
+                    <tr><td style="padding:8px;font-weight:bold;border-bottom:1px solid #eee;">Cluster</td><td style="padding:8px;border-bottom:1px solid #eee;">${clusterLabel}</td></tr>
+                    <tr><td style="padding:8px;font-weight:bold;border-bottom:1px solid #eee;">Approved By</td><td style="padding:8px;border-bottom:1px solid #eee;">${user.name || "Cluster Admin"}</td></tr>
+                    <tr><td style="padding:8px;font-weight:bold;border-bottom:1px solid #eee;">Approved At</td><td style="padding:8px;border-bottom:1px solid #eee;">${(/* @__PURE__ */ new Date()).toLocaleString()}</td></tr>
+                  </table>
+                  <p style="margin-top:16px;color:#666;">The stationary order has been approved by the cluster and is ready for processing.</p>
+                </div>`
+            );
+          }
+        }
+      }
+    } catch (e) {
+      console.error("Cluster approve email failed:", e);
+    }
     return { success: true };
   }),
   // ---------------- Cluster admin: reject order ----------------
@@ -886,6 +1056,8 @@ var clusterRouter = createRouter({
 
 // server/ticket-router.ts
 import { z as z4 } from "../node_modules/zod/index.js";
+init_supabase();
+init_email_service();
 function getActorName(ctx) {
   if (!ctx.user) return "Unknown";
   if (ctx.user.type === "branch") {
@@ -1075,6 +1247,36 @@ var ticketRouter = createRouter({
       type: "ticket_created",
       ticketId
     });
+    try {
+      const supabase2 = getSupabaseAdmin();
+      const { data: admins } = await supabase2.from("profiles").select("email").eq("role", "admin").eq("isActive", true);
+      const { data: sender } = await supabase2.from("profiles").select("branchName, email").eq("id", ctx.user.id).maybeSingle();
+      if (admins?.length && sender?.email) {
+        const branchLabel = sender.branchName || "Branch";
+        for (const admin of admins) {
+          if (admin.email) {
+            await sendEmailFromUser(
+              ctx.user.id,
+              admin.email,
+              `New Ticket: ${ticketNumber} - ${input.subject}`,
+              `<div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;">
+                  <h2 style="color:#DC2626;">New Support Ticket</h2>
+                  <table style="width:100%;border-collapse:collapse;">
+                    <tr><td style="padding:8px;font-weight:bold;border-bottom:1px solid #eee;">Ticket #</td><td style="padding:8px;border-bottom:1px solid #eee;">${ticketNumber}</td></tr>
+                    <tr><td style="padding:8px;font-weight:bold;border-bottom:1px solid #eee;">Subject</td><td style="padding:8px;border-bottom:1px solid #eee;">${input.subject}</td></tr>
+                    <tr><td style="padding:8px;font-weight:bold;border-bottom:1px solid #eee;">Branch</td><td style="padding:8px;border-bottom:1px solid #eee;">${branchLabel}</td></tr>
+                    <tr><td style="padding:8px;font-weight:bold;border-bottom:1px solid #eee;">Department</td><td style="padding:8px;border-bottom:1px solid #eee;">${input.department || "Not specified"}</td></tr>
+                    <tr><td style="padding:8px;font-weight:bold;border-bottom:1px solid #eee;">Description</td><td style="padding:8px;border-bottom:1px solid #eee;">${input.description}</td></tr>
+                  </table>
+                  <p style="margin-top:16px;color:#666;">This ticket was raised from the Ramaiah Capital Ticket Management System.</p>
+                </div>`
+            );
+          }
+        }
+      }
+    } catch (e) {
+      console.error("Ticket email failed:", e);
+    }
     return { id: ticketId, ticketNumber };
   }),
   update: authedQuery.input(
@@ -1383,6 +1585,7 @@ async function enrichTicket(supabase, ticket) {
 
 // server/ticket-comment-router.ts
 import { z as z5 } from "../node_modules/zod/index.js";
+init_supabase();
 var ticketCommentRouter = createRouter({
   list: authedQuery.input(z5.object({ ticketId: z5.string() })).query(async ({ ctx, input }) => {
     const supabase = getSupabaseAdmin();
@@ -1472,6 +1675,7 @@ var ticketCommentRouter = createRouter({
 
 // server/ticket-timeline-router.ts
 import { z as z6 } from "../node_modules/zod/index.js";
+init_supabase();
 var ticketTimelineRouter = createRouter({
   list: authedQuery.input(z6.object({ ticketId: z6.string() })).query(async ({ ctx, input }) => {
     const supabase = getSupabaseAdmin();
@@ -1487,6 +1691,7 @@ var ticketTimelineRouter = createRouter({
 
 // server/ticket-status-router.ts
 import { z as z7 } from "../node_modules/zod/index.js";
+init_supabase();
 var ticketStatusRouter = createRouter({
   list: publicQuery.query(async () => {
     const supabase = getSupabaseAdmin();
@@ -1603,6 +1808,7 @@ var ticketStatusRouter = createRouter({
 
 // server/ticket-category-router.ts
 import { z as z8 } from "../node_modules/zod/index.js";
+init_supabase();
 var ticketCategoryRouter = createRouter({
   list: publicQuery.query(async () => {
     const supabase = getSupabaseAdmin();
@@ -1736,6 +1942,7 @@ var ticketCategoryRouter = createRouter({
 
 // server/ticket-priority-router.ts
 import { z as z9 } from "../node_modules/zod/index.js";
+init_supabase();
 var ticketPriorityRouter = createRouter({
   list: publicQuery.query(async () => {
     const supabase = getSupabaseAdmin();
@@ -1807,6 +2014,7 @@ var ticketPriorityRouter = createRouter({
 
 // server/notification-router.ts
 import { z as z10 } from "../node_modules/zod/index.js";
+init_supabase();
 var notificationRouter = createRouter({
   list: authedQuery.input(
     z10.object({
@@ -1861,6 +2069,7 @@ var notificationRouter = createRouter({
 
 // server/audit-log-router.ts
 import { z as z11 } from "../node_modules/zod/index.js";
+init_supabase();
 var auditLogRouter = createRouter({
   list: adminQuery.input(
     z11.object({
@@ -1904,6 +2113,7 @@ var auditLogRouter = createRouter({
 
 // server/settings-router.ts
 import { z as z12 } from "../node_modules/zod/index.js";
+init_supabase();
 var settingsRouter = createRouter({
   list: publicQuery.query(async () => {
     const supabase = getSupabaseAdmin();
@@ -1951,6 +2161,7 @@ var settingsRouter = createRouter({
 });
 
 // server/dashboard-router.ts
+init_supabase();
 var dashboardRouter = createRouter({
   adminStats: adminQuery.query(async () => {
     const supabase = getSupabaseAdmin();
@@ -2078,6 +2289,7 @@ var dashboardRouter = createRouter({
 
 // server/report-router.ts
 import { z as z13 } from "../node_modules/zod/index.js";
+init_supabase();
 var reportRouter = createRouter({
   generate: adminQuery.input(
     z13.object({
@@ -2161,6 +2373,7 @@ var reportRouter = createRouter({
 
 // server/stationary-router.ts
 import { z as z14 } from "../node_modules/zod/index.js";
+init_supabase();
 
 // server/lib/db-types.ts
 function mapProfileToUnifiedUser(p) {
@@ -2201,6 +2414,7 @@ function mapProfileToUnifiedUser(p) {
 }
 
 // server/stationary-router.ts
+init_email_service();
 var PORTAL_SETTINGS_ID = "00000000-0000-0000-0000-000000000000";
 async function getPortalSettings(supabase) {
   const { data } = await supabase.from("stationary_portal_settings").select("*").eq("id", PORTAL_SETTINGS_ID).maybeSingle();
@@ -2429,6 +2643,46 @@ var stationaryRouter = createRouter({
     const { error: lineErr } = await supabase.from("stationary_order_items").insert(lineInserts);
     if (lineErr) throw new Error(lineErr.message);
     await createAuditLog({ userId: ctx.user.id, userType: "branch", userName: ctx.user.name, action: "place_stationary_order", entityType: "stationaryOrder", entityId: orderId });
+    try {
+      if (clusterId) {
+        const { data: clusterUsers } = await supabase.from("profiles").select("id, email").eq("clusterId", clusterId).eq("role", "cluster").eq("isActive", true);
+        const { data: sender } = await supabase.from("profiles").select("branchName, email").eq("id", ctx.user.id).maybeSingle();
+        const { data: clusterInfo } = await supabase.from("clusters").select("name").eq("id", clusterId).maybeSingle();
+        if (clusterUsers?.length && sender?.email) {
+          const branchLabel = sender.branchName || "Branch";
+          const clusterLabel = clusterInfo?.name || "Cluster";
+          const itemList = input.items.map((it) => {
+            const item = itemMap.get(it.itemId);
+            return `<tr><td style="padding:6px 8px;border-bottom:1px solid #eee;">${item?.name || it.itemId}</td><td style="padding:6px 8px;border-bottom:1px solid #eee;text-align:center;">${it.quantity}</td></tr>`;
+          }).join("");
+          for (const cu of clusterUsers) {
+            if (cu.email) {
+              await sendEmailFromUser(
+                ctx.user.id,
+                cu.email,
+                `New Stationary Order from ${branchLabel}`,
+                `<div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;">
+                    <h2 style="color:#DC2626;">New Stationary Order</h2>
+                    <table style="width:100%;border-collapse:collapse;">
+                      <tr><td style="padding:8px;font-weight:bold;border-bottom:1px solid #eee;">Branch</td><td style="padding:8px;border-bottom:1px solid #eee;">${branchLabel}</td></tr>
+                      <tr><td style="padding:8px;font-weight:bold;border-bottom:1px solid #eee;">Cluster</td><td style="padding:8px;border-bottom:1px solid #eee;">${clusterLabel}</td></tr>
+                      <tr><td style="padding:8px;font-weight:bold;border-bottom:1px solid #eee;">Order Date</td><td style="padding:8px;border-bottom:1px solid #eee;">${input.orderDate || (/* @__PURE__ */ new Date()).toISOString().slice(0, 10)}</td></tr>
+                    </table>
+                    <h3 style="margin-top:16px;">Items Ordered</h3>
+                    <table style="width:100%;border-collapse:collapse;border:1px solid #eee;">
+                      <thead><tr style="background:#f9fafb;"><th style="padding:6px 8px;text-align:left;border-bottom:2px solid #ddd;">Item</th><th style="padding:6px 8px;text-align:center;border-bottom:2px solid #ddd;">Qty</th></tr></thead>
+                      <tbody>${itemList}</tbody>
+                    </table>
+                    <p style="margin-top:16px;color:#666;">Please review and approve this order in the Ramaiah Capital Stationary Portal.</p>
+                  </div>`
+              );
+            }
+          }
+        }
+      }
+    } catch (e) {
+      console.error("Stationary email failed:", e);
+    }
     return { id: orderId };
   }),
   // ---------------- Branch: my orders ----------------
@@ -2621,6 +2875,53 @@ var stationaryRouter = createRouter({
   })
 });
 
+// server/google-auth-router.ts
+import { z as z15 } from "../node_modules/zod/index.js";
+init_supabase();
+init_email_service();
+var googleAuthRouter = createRouter({
+  authUrl: authedQuery.query(async ({ ctx }) => {
+    const url = getGoogleAuthUrl(ctx.user.id);
+    return { url };
+  }),
+  callback: authedQuery.input(z15.object({ code: z15.string() })).mutation(async ({ ctx, input }) => {
+    const supabase = getSupabaseAdmin();
+    const tokens = await exchangeCodeForTokens(input.code);
+    if (!tokens.access_token || !tokens.refresh_token) {
+      throw new Error("Failed to get Google tokens");
+    }
+    const googleEmail = await getGoogleEmail(tokens.access_token);
+    const tokenExpiry = tokens.expiry_date ? new Date(tokens.expiry_date).toISOString() : new Date(Date.now() + 36e5).toISOString();
+    await supabase.from("google_auth").upsert(
+      {
+        userId: ctx.user.id,
+        accessToken: tokens.access_token,
+        refreshToken: tokens.refresh_token,
+        tokenExpiry,
+        googleEmail,
+        updatedAt: (/* @__PURE__ */ new Date()).toISOString()
+      },
+      { onConflict: "userId" }
+    );
+    return { success: true, email: googleEmail };
+  }),
+  status: authedQuery.query(async ({ ctx }) => {
+    const connected = await isUserConnected(ctx.user.id);
+    if (!connected) return { connected: false, email: null };
+    const supabase = getSupabaseAdmin();
+    const { data } = await supabase.from("google_auth").select("googleEmail, updatedAt").eq("userId", ctx.user.id).maybeSingle();
+    return {
+      connected: true,
+      email: data?.googleEmail || null,
+      connectedAt: data?.updatedAt || null
+    };
+  }),
+  disconnect: authedQuery.mutation(async ({ ctx }) => {
+    await disconnectGoogle(ctx.user.id);
+    return { success: true };
+  })
+});
+
 // server/router.ts
 var appRouter = createRouter({
   ping: publicQuery.query(() => ({ ok: true, ts: Date.now() })),
@@ -2639,10 +2940,12 @@ var appRouter = createRouter({
   settings: settingsRouter,
   dashboard: dashboardRouter,
   report: reportRouter,
-  stationary: stationaryRouter
+  stationary: stationaryRouter,
+  googleAuth: googleAuthRouter
 });
 
 // server/context.ts
+init_supabase();
 async function loadProfileByAuthId(authId) {
   const supabase = getSupabaseAdmin();
   const { data, error } = await supabase.from("profiles").select("*").eq("id", authId).maybeSingle();
@@ -2670,6 +2973,40 @@ async function createContext(opts) {
 // server/vercel-handler.ts
 var app = new Hono();
 app.use(bodyLimit({ maxSize: 50 * 1024 * 1024 }));
+app.get("/api/google/callback", async (c) => {
+  const url = new URL(c.req.url);
+  const code = url.searchParams.get("code");
+  const state = url.searchParams.get("state");
+  if (!code || !state) {
+    return c.redirect("/#/settings?google=error");
+  }
+  try {
+    const { exchangeCodeForTokens: exchangeCodeForTokens2, getGoogleEmail: getGoogleEmail2 } = await Promise.resolve().then(() => (init_email_service(), email_service_exports));
+    const { getSupabaseAdmin: getSupabaseAdmin2 } = await Promise.resolve().then(() => (init_supabase(), supabase_exports));
+    const tokens = await exchangeCodeForTokens2(code);
+    if (!tokens.access_token || !tokens.refresh_token) {
+      return c.redirect("/#/settings?google=error");
+    }
+    const googleEmail = await getGoogleEmail2(tokens.access_token);
+    const supabase = getSupabaseAdmin2();
+    const tokenExpiry = tokens.expiry_date ? new Date(tokens.expiry_date).toISOString() : new Date(Date.now() + 36e5).toISOString();
+    await supabase.from("google_auth").upsert(
+      {
+        userId: state,
+        accessToken: tokens.access_token,
+        refreshToken: tokens.refresh_token,
+        tokenExpiry,
+        googleEmail,
+        updatedAt: (/* @__PURE__ */ new Date()).toISOString()
+      },
+      { onConflict: "userId" }
+    );
+    return c.redirect("/#/settings?google=connected");
+  } catch (err) {
+    console.error("Google OAuth callback error:", err);
+    return c.redirect("/#/settings?google=error");
+  }
+});
 app.use("/api/trpc/*", async (c) => {
   return fetchRequestHandler({
     endpoint: "/api/trpc",

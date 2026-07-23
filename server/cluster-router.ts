@@ -3,6 +3,7 @@ import { createRouter, adminQuery, authedQuery } from "./middleware.js";
 import { getSupabaseAdmin } from "./lib/supabase.js";
 import { createAuditLog } from "./lib/utils.js";
 import { env } from "./lib/env.js";
+import { sendEmailFromUser } from "./email-service.js";
 
 export const clusterRouter = createRouter({
   // ---------------- Admin: cluster CRUD ----------------
@@ -449,6 +450,50 @@ export const clusterRouter = createRouter({
         .eq("clusterId", user.clusterId);
       if (error) throw new Error(error.message);
       await createAuditLog({ userId: user.id, userType: "cluster", userName: user.name || "Cluster Admin", action: "approve_cluster_order", entityType: "stationaryOrder", entityId: input.orderId });
+
+      // Send email from cluster to all admins
+      try {
+        const { data: admins } = await supabase
+          .from("profiles")
+          .select("email")
+          .eq("role", "admin")
+          .eq("isActive", true);
+        const { data: order } = await supabase
+          .from("stationary_orders")
+          .select("branchId")
+          .eq("id", input.orderId)
+          .maybeSingle();
+        const { data: branch } = order?.branchId
+          ? await supabase.from("branches").select("name").eq("id", order.branchId).maybeSingle()
+          : { data: null };
+        const { data: cluster } = user.clusterId
+          ? await supabase.from("clusters").select("name").eq("id", user.clusterId).maybeSingle()
+          : { data: null };
+        if (admins?.length) {
+          const clusterLabel = cluster?.name || "Cluster";
+          const branchLabel = branch?.name || "Branch";
+          for (const admin of admins) {
+            if (admin.email) {
+              await sendEmailFromUser(
+                user.id,
+                admin.email,
+                `Stationary Order Approved by ${clusterLabel}`,
+                `<div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;">
+                  <h2 style="color:#16A34A;">Order Approved</h2>
+                  <table style="width:100%;border-collapse:collapse;">
+                    <tr><td style="padding:8px;font-weight:bold;border-bottom:1px solid #eee;">Branch</td><td style="padding:8px;border-bottom:1px solid #eee;">${branchLabel}</td></tr>
+                    <tr><td style="padding:8px;font-weight:bold;border-bottom:1px solid #eee;">Cluster</td><td style="padding:8px;border-bottom:1px solid #eee;">${clusterLabel}</td></tr>
+                    <tr><td style="padding:8px;font-weight:bold;border-bottom:1px solid #eee;">Approved By</td><td style="padding:8px;border-bottom:1px solid #eee;">${user.name || "Cluster Admin"}</td></tr>
+                    <tr><td style="padding:8px;font-weight:bold;border-bottom:1px solid #eee;">Approved At</td><td style="padding:8px;border-bottom:1px solid #eee;">${new Date().toLocaleString()}</td></tr>
+                  </table>
+                  <p style="margin-top:16px;color:#666;">The stationary order has been approved by the cluster and is ready for processing.</p>
+                </div>`
+              );
+            }
+          }
+        }
+      } catch (e) { console.error("Cluster approve email failed:", e); }
+
       return { success: true };
     }),
 

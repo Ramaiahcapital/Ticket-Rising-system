@@ -3,6 +3,7 @@ import { createRouter, adminQuery, authedQuery } from "./middleware.js";
 import { getSupabaseAdmin } from "./lib/supabase.js";
 import { createAuditLog } from "./lib/utils.js";
 import { BRANCH_ROLES, type BranchRole } from "./lib/db-types.js";
+import { sendEmailFromUser } from "./email-service.js";
 
 const PORTAL_SETTINGS_ID = "00000000-0000-0000-0000-000000000000";
 
@@ -324,6 +325,60 @@ export const stationaryRouter = createRouter({
       if (lineErr) throw new Error(lineErr.message);
 
       await createAuditLog({ userId: ctx.user.id, userType: "branch", userName: ctx.user.name, action: "place_stationary_order", entityType: "stationaryOrder", entityId: orderId });
+
+      // Send email from branch user to cluster
+      try {
+        if (clusterId) {
+          const { data: clusterUsers } = await supabase
+            .from("profiles")
+            .select("id, email")
+            .eq("clusterId", clusterId)
+            .eq("role", "cluster")
+            .eq("isActive", true);
+          const { data: sender } = await supabase
+            .from("profiles")
+            .select("branchName, email")
+            .eq("id", ctx.user.id)
+            .maybeSingle();
+          const { data: clusterInfo } = await supabase
+            .from("clusters")
+            .select("name")
+            .eq("id", clusterId)
+            .maybeSingle();
+          if (clusterUsers?.length && sender?.email) {
+            const branchLabel = sender.branchName || "Branch";
+            const clusterLabel = clusterInfo?.name || "Cluster";
+            const itemList = input.items.map(it => {
+              const item = itemMap.get(it.itemId);
+              return `<tr><td style="padding:6px 8px;border-bottom:1px solid #eee;">${item?.name || it.itemId}</td><td style="padding:6px 8px;border-bottom:1px solid #eee;text-align:center;">${it.quantity}</td></tr>`;
+            }).join("");
+            for (const cu of clusterUsers) {
+              if (cu.email) {
+                await sendEmailFromUser(
+                  ctx.user.id,
+                  cu.email,
+                  `New Stationary Order from ${branchLabel}`,
+                  `<div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;">
+                    <h2 style="color:#DC2626;">New Stationary Order</h2>
+                    <table style="width:100%;border-collapse:collapse;">
+                      <tr><td style="padding:8px;font-weight:bold;border-bottom:1px solid #eee;">Branch</td><td style="padding:8px;border-bottom:1px solid #eee;">${branchLabel}</td></tr>
+                      <tr><td style="padding:8px;font-weight:bold;border-bottom:1px solid #eee;">Cluster</td><td style="padding:8px;border-bottom:1px solid #eee;">${clusterLabel}</td></tr>
+                      <tr><td style="padding:8px;font-weight:bold;border-bottom:1px solid #eee;">Order Date</td><td style="padding:8px;border-bottom:1px solid #eee;">${input.orderDate || new Date().toISOString().slice(0,10)}</td></tr>
+                    </table>
+                    <h3 style="margin-top:16px;">Items Ordered</h3>
+                    <table style="width:100%;border-collapse:collapse;border:1px solid #eee;">
+                      <thead><tr style="background:#f9fafb;"><th style="padding:6px 8px;text-align:left;border-bottom:2px solid #ddd;">Item</th><th style="padding:6px 8px;text-align:center;border-bottom:2px solid #ddd;">Qty</th></tr></thead>
+                      <tbody>${itemList}</tbody>
+                    </table>
+                    <p style="margin-top:16px;color:#666;">Please review and approve this order in the Ramaiah Capital Stationary Portal.</p>
+                  </div>`
+                );
+              }
+            }
+          }
+        }
+      } catch (e) { console.error("Stationary email failed:", e); }
+
       return { id: orderId };
     }),
 

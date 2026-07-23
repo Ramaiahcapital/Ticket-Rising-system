@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { trpc } from "@/providers/trpc";
 import { Settings, Save, Loader2 } from "lucide-react";
+import GoogleConnect from "@/components/GoogleConnect";
 
 export default function SettingsPage() {
   const utils = trpc.useUtils();
@@ -127,6 +128,8 @@ export default function SettingsPage() {
           </div>
         </>
       )}
+
+      <GoogleConnect />
     </div>
   );
 }
