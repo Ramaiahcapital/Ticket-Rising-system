@@ -3,7 +3,7 @@ import { useNavigate } from "react-router";
 import { trpc } from "@/providers/trpc";
 import { useAuth } from "@/hooks/useAuth";
 import {
-  Plus, Search, Filter, Eye, Ticket, Download,
+  Plus, Search, Filter, Eye, Ticket, Download, Loader2,
 } from "lucide-react";
 import * as XLSX from "xlsx";
 
@@ -18,6 +18,8 @@ export default function TicketList() {
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
   const [showFilters, setShowFilters] = useState(false);
+  const [isExporting, setIsExporting] = useState(false);
+  const [activeBucket, setActiveBucket] = useState<string>("all");
   const limit = 10;
 
   const { data: ticketsData, isLoading } = trpc.ticket.list.useQuery({
@@ -33,6 +35,7 @@ export default function TicketList() {
 
   const { data: statuses } = trpc.ticketStatus.listEnabled.useQuery();
   const { data: branches } = trpc.branch.listAll.useQuery();
+  const { data: deptCounts } = trpc.ticket.departmentCounts.useQuery(undefined, { enabled: isAdmin });
 
   const exportQuery = trpc.ticket.listExport.useQuery({
     search: search || undefined,
@@ -44,26 +47,31 @@ export default function TicketList() {
   }, { enabled: false });
 
   const handleExport = useCallback(async () => {
-    const result = await exportQuery.refetch();
-    const data = result.data;
-    if (!data || data.length === 0) return;
+    setIsExporting(true);
+    try {
+      const result = await exportQuery.refetch();
+      const data = result.data;
+      if (!data || data.length === 0) return;
 
-    const wsData = data.map(t => ({
-      "Ticket Number": t.ticketNumber,
-      "Subject": t.subject,
-      "Branch": t.branch,
-      "Progress": t.status,
-      "Department": t.branchRole,
-      "Created": new Date(t.createdAt ?? new Date()).toLocaleDateString(),
-    }));
+      const wsData = data.map(t => ({
+        "Ticket Number": t.ticketNumber,
+        "Subject": t.subject,
+        "Branch": t.branch,
+        "Progress": t.status,
+        "Department": t.branchRole,
+        "Created": new Date(t.createdAt ?? new Date()).toLocaleDateString(),
+      }));
 
-    const ws = XLSX.utils.json_to_sheet(wsData);
-    ws["!cols"] = [
-      { wch: 18 }, { wch: 40 }, { wch: 20 }, { wch: 15 }, { wch: 18 }, { wch: 14 },
-    ];
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, "Tickets");
-    XLSX.writeFile(wb, "tickets.xlsx");
+      const ws = XLSX.utils.json_to_sheet(wsData);
+      ws["!cols"] = [
+        { wch: 18 }, { wch: 40 }, { wch: 20 }, { wch: 15 }, { wch: 18 }, { wch: 14 },
+      ];
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, "Tickets");
+      XLSX.writeFile(wb, "tickets.xlsx");
+    } finally {
+      setIsExporting(false);
+    }
   }, [exportQuery]);
 
   const getStatusBadge = (statusName: string, color: string) => (
@@ -98,6 +106,13 @@ export default function TicketList() {
     setDisplayLimit(10);
   };
 
+  const handleBucketClick = (bucket: string) => {
+    setActiveBucket(bucket);
+    if (bucket === "all") setBranchRole(undefined);
+    else setBranchRole(bucket as "IT" | "Branch Admin" | "Manager");
+    setDisplayLimit(10);
+  };
+
   return (
     <div className="space-y-4">
       {/* Header */}
@@ -111,10 +126,15 @@ export default function TicketList() {
         <div className="flex gap-2">
           <button
             onClick={handleExport}
-            className="flex items-center gap-2 px-4 py-2 border border-gray-300 text-sm font-medium rounded-lg hover:bg-gray-50 transition-colors"
+            disabled={isExporting}
+            className="flex items-center gap-2 px-4 py-2 border border-gray-300 text-sm font-medium rounded-lg hover:bg-gray-50 transition-colors disabled:opacity-50"
           >
-            <Download className="w-4 h-4" />
-            Export Excel
+            {isExporting ? (
+              <Loader2 className="w-4 h-4 animate-spin" />
+            ) : (
+              <Download className="w-4 h-4" />
+            )}
+            {isExporting ? "Exporting..." : "Export Excel"}
           </button>
           {!isAdmin && (
             <button
@@ -127,6 +147,43 @@ export default function TicketList() {
           )}
         </div>
       </div>
+
+      {/* Department Bucket Tabs (admin only) */}
+      {isAdmin && (
+        <div className="flex gap-2 flex-wrap">
+          {[
+            { key: "all", name: "All", color: "#6B7280", count: ticketsData?.total ?? 0 },
+            ...(deptCounts ?? []).map(d => ({ ...d, key: d.name })),
+          ].map((bucket) => {
+            const highlight = activeBucket === bucket.key;
+            return (
+              <button
+                key={bucket.key}
+                onClick={() => handleBucketClick(bucket.key)}
+                className={`relative flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium transition-all border ${
+                  highlight
+                    ? "border-gray-800 bg-gray-800 text-white shadow-sm"
+                    : "border-gray-200 bg-white text-gray-600 hover:border-gray-300 hover:bg-gray-50"
+                }`}
+              >
+                <span
+                  className="w-2.5 h-2.5 rounded-full flex-shrink-0"
+                  style={{ backgroundColor: bucket.color || "#6B7280" }}
+                />
+                {bucket.name}
+                <span className={`ml-1 px-1.5 py-0.5 rounded text-xs font-semibold ${
+                  highlight ? "bg-white/20 text-white" : "bg-gray-100 text-gray-500"
+                }`}>
+                  {bucket.count ?? 0}
+                </span>
+                {bucket.count > 0 && bucket.key !== "all" && (
+                  <span className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-red-500 rounded-full border-2 border-white animate-pulse" />
+                )}
+              </button>
+            );
+          })}
+        </div>
+      )}
 
       {/* Filters */}
       <div className="bg-white rounded-xl border border-gray-200 p-4">

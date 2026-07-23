@@ -75,20 +75,26 @@ export const ticketRouter = createRouter({
       const { data: priorities } = await supabase.from("ticket_priorities").select("*");
       const { data: categories } = await supabase.from("ticket_categories").select("*");
       const { data: profiles } = await supabase.from("profiles").select("*");
+      const { data: branchRows } = await supabase.from("branches").select("id, name");
 
       const statusMap = new Map((statuses ?? []).map((s) => [s.id, s]));
       const priorityMap = new Map((priorities ?? []).map((p) => [p.id, p]));
       const categoryMap = new Map((categories ?? []).map((c) => [c.id, c]));
       const profileMap = new Map((profiles ?? []).map((b) => [b.id, b]));
+      const branchMap = new Map((branchRows ?? []).map((b) => [b.id, b.name]));
 
-      const enrichedItems = (items ?? []).map((t) => ({
-        ...t,
-        status: statusMap.get(t.statusId ?? "") || null,
-        priority: priorityMap.get(t.priorityId ?? "") || null,
-        category: categoryMap.get(t.categoryId ?? "") || null,
-        branch: profileMap.get(t.branchId ?? "") || null,
-        assignee: profileMap.get(t.assignedTo ?? "") || null,
-      }));
+      const enrichedItems = (items ?? []).map((t) => {
+        const profile = profileMap.get(t.branchId ?? "") || null;
+        const branchName = profile?.branchName || branchMap.get(profile?.branchId) || null;
+        return {
+          ...t,
+          status: statusMap.get(t.statusId ?? "") || null,
+          priority: priorityMap.get(t.priorityId ?? "") || null,
+          category: categoryMap.get(t.categoryId ?? "") || null,
+          branch: profile ? { ...profile, branchName } : null,
+          assignee: profileMap.get(t.assignedTo ?? "") || null,
+        };
+      });
 
       const total = count ?? 0;
       return {
@@ -99,6 +105,30 @@ export const ticketRouter = createRouter({
         totalPages: Math.ceil(total / params.limit),
       };
     }),
+
+  departmentCounts: adminQuery.query(async () => {
+    const supabase = getSupabaseAdmin();
+    const { data: openStatus } = await supabase
+      .from("ticket_statuses")
+      .select("id")
+      .eq("name", "Open")
+      .maybeSingle();
+
+    let query = supabase.from("tickets").select("branchRole");
+    if (openStatus) query = query.eq("statusId", openStatus.id);
+    const { data: tickets } = await query;
+
+    const counts: Record<string, number> = { IT: 0, "Branch Admin": 0, Manager: 0 };
+    for (const t of tickets ?? []) {
+      const role = (t as any).branchRole as string | undefined;
+      if (role && role in counts) counts[role]++;
+    }
+    return [
+      { name: "IT", count: counts.IT, color: "#3B82F6" },
+      { name: "Branch Admin", count: counts["Branch Admin"], color: "#8B5CF6" },
+      { name: "Manager", count: counts.Manager, color: "#F59E0B" },
+    ];
+  }),
 
   listExport: adminQuery
     .input(
@@ -648,6 +678,7 @@ export const ticketRouter = createRouter({
     .input(
       z.object({
         ticketId: z.string(),
+        commentId: z.string().optional(),
         fileName: z.string(),
         fileType: z.string(),
         fileSize: z.number(),
@@ -660,6 +691,7 @@ export const ticketRouter = createRouter({
         .from("ticket_attachments")
         .insert({
           ticketId: input.ticketId,
+          commentId: input.commentId || null,
           fileName: input.fileName,
           fileType: input.fileType,
           fileSize: input.fileSize,

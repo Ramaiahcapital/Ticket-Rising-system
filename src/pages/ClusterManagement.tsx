@@ -404,7 +404,7 @@ function BranchAssignmentsTab() {
         <p className="text-sm text-gray-500">{filtered.length} branches</p>
       </div>
 
-      <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+      <div className="bg-white rounded-xl border border-gray-200 overflow-visible">
         {filtered.length === 0 ? (
           <div className="p-12 text-center text-gray-400 text-sm">No branches match your filters</div>
         ) : (

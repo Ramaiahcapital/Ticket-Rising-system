@@ -510,6 +510,41 @@ export const clusterRouter = createRouter({
         .eq("clusterId", user.clusterId);
       if (error) throw new Error(error.message);
       await createAuditLog({ userId: user.id, userType: "cluster", userName: user.name || "Cluster Admin", action: "reject_cluster_order", entityType: "stationaryOrder", entityId: input.orderId });
+
+      try {
+        const { data: order } = await supabase
+          .from("stationary_orders")
+          .select("branchId, createdBy")
+          .eq("id", input.orderId)
+          .maybeSingle();
+        if (order?.createdBy) {
+          const { data: branchUser } = await supabase
+            .from("profiles")
+            .select("email, branchName")
+            .eq("id", order.createdBy)
+            .maybeSingle();
+          const { data: clusterInfo } = user.clusterId
+            ? await supabase.from("clusters").select("name").eq("id", user.clusterId).maybeSingle()
+            : { data: null };
+          if (branchUser?.email) {
+            await sendEmailFromUser(
+              user.id,
+              branchUser.email,
+              `Order Rejected by ${clusterInfo?.name || "Cluster"}`,
+              `<div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;">
+                <h2 style="color:#DC2626;">Order Rejected</h2>
+                <table style="width:100%;border-collapse:collapse;">
+                  <tr><td style="padding:8px;font-weight:bold;border-bottom:1px solid #eee;">Branch</td><td style="padding:8px;border-bottom:1px solid #eee;">${branchUser.branchName || "Branch"}</td></tr>
+                  <tr><td style="padding:8px;font-weight:bold;border-bottom:1px solid #eee;">Rejected By</td><td style="padding:8px;border-bottom:1px solid #eee;">${user.name || "Cluster Admin"}</td></tr>
+                  <tr><td style="padding:8px;font-weight:bold;border-bottom:1px solid #eee;">Rejected At</td><td style="padding:8px;border-bottom:1px solid #eee;">${new Date().toLocaleString()}</td></tr>
+                </table>
+                <p style="margin-top:16px;color:#666;">Your stationary order has been rejected. You can place a new order from the Stationary portal.</p>
+              </div>`
+            );
+          }
+        }
+      } catch (e) { console.error("Cluster reject email failed:", e); }
+
       return { success: true };
     }),
 

@@ -20,6 +20,7 @@ import ClusterManagement from "@/pages/ClusterManagement";
 import ClusterDashboard from "@/pages/ClusterDashboard";
 import ClusterOrders from "@/pages/ClusterOrders";
 import TicketFormConfig from "@/pages/TicketFormConfig";
+import EmailConnectPage from "@/pages/EmailConnectPage";
 import NotFound from "@/pages/NotFound";
 
 function ProtectedRoute({ children, requireAdmin = false }: { children: React.ReactNode; requireAdmin?: boolean }) {
@@ -173,6 +174,14 @@ export default function App() {
         element={
           <ProtectedRoute>
             <ClusterOrders />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/email-settings"
+        element={
+          <ProtectedRoute>
+            <EmailConnectPage />
           </ProtectedRoute>
         }
       />

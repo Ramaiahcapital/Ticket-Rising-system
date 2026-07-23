@@ -26,7 +26,9 @@ export async function exchangeCodeForTokens(code: string) {
 }
 
 export async function getGoogleEmail(accessToken: string): Promise<string> {
-  const oauth2 = google.oauth2({ version: "v2", auth: accessToken });
+  const client = new google.auth.OAuth2();
+  client.setCredentials({ access_token: accessToken });
+  const oauth2 = google.oauth2({ version: "v2", auth: client });
   const { data } = await oauth2.userinfo.get();
   return data.email || "";
 }
@@ -95,7 +97,9 @@ export async function sendEmailFromUser(
       .replace(/\//g, "_")
       .replace(/=+$/, "");
 
-    const gmail = google.gmail({ version: "v1", auth: accessToken });
+    const gmailClient = new google.auth.OAuth2();
+    gmailClient.setCredentials({ access_token: accessToken });
+    const gmail = google.gmail({ version: "v1", auth: gmailClient });
     await gmail.users.messages.send({
       userId: "me",
       requestBody: { raw: encodedMessage },

@@ -53,6 +53,15 @@ app.get("/api/google/callback", async (c) => {
   }
 });
 
+// Supabase keep-alive — Vercel cron pings this daily to prevent free-tier pause
+app.get("/api/health", async (c) => {
+  const { getSupabaseAdmin } = await import("./lib/supabase.js");
+  const supabase = getSupabaseAdmin();
+  const { error } = await supabase.from("profiles").select("id").limit(1);
+  if (error) return c.json({ status: "error", message: error.message }, 500);
+  return c.json({ status: "ok", timestamp: new Date().toISOString() });
+});
+
 app.use("/api/trpc/*", async (c) => {
   return fetchRequestHandler({
     endpoint: "/api/trpc",

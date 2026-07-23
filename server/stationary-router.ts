@@ -625,6 +625,39 @@ export const stationaryRouter = createRouter({
       const { error } = await supabase.from("stationary_orders").update({ status: input.status }).eq("id", input.orderId);
       if (error) throw new Error(error.message);
       await createAuditLog({ userId: ctx.user.id, userType: "admin", action: "set_stationary_order_status", entityType: "stationaryOrder", entityId: input.orderId, details: { status: input.status } });
+
+      if (input.status === "cancelled") {
+        try {
+          const { data: order } = await supabase
+            .from("stationary_orders")
+            .select("createdBy")
+            .eq("id", input.orderId)
+            .maybeSingle();
+          if (order?.createdBy) {
+            const { data: branchUser } = await supabase
+              .from("profiles")
+              .select("email, branchName")
+              .eq("id", order.createdBy)
+              .maybeSingle();
+            if (branchUser?.email) {
+              await sendEmailFromUser(
+                ctx.user.id,
+                branchUser.email,
+                `Order Cancelled by Admin`,
+                `<div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;">
+                  <h2 style="color:#DC2626;">Order Cancelled</h2>
+                  <table style="width:100%;border-collapse:collapse;">
+                    <tr><td style="padding:8px;font-weight:bold;border-bottom:1px solid #eee;">Branch</td><td style="padding:8px;border-bottom:1px solid #eee;">${branchUser.branchName || "Branch"}</td></tr>
+                    <tr><td style="padding:8px;font-weight:bold;border-bottom:1px solid #eee;">Cancelled At</td><td style="padding:8px;border-bottom:1px solid #eee;">${new Date().toLocaleString()}</td></tr>
+                  </table>
+                  <p style="margin-top:16px;color:#666;">Your stationary order has been cancelled by the administrator. You can place a new order from the Stationary portal.</p>
+                </div>`
+              );
+            }
+          }
+        } catch (e) { console.error("Admin cancel email failed:", e); }
+      }
+
       return { success: true };
     }),
 

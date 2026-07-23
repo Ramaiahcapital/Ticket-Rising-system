@@ -148,11 +148,10 @@ export default function UserManagement() {
           <table className="w-full">
             <thead>
               <tr className="bg-gray-50 border-b border-gray-200">
-                <th className="text-left py-3 px-4 text-xs font-semibold text-gray-500 uppercase">Branch</th>
-                <th className="text-left py-3 px-4 text-xs font-semibold text-gray-500 uppercase">Code</th>
-                <th className="text-left py-3 px-4 text-xs font-semibold text-gray-500 uppercase">Contact</th>
-                <th className="text-left py-3 px-4 text-xs font-semibold text-gray-500 uppercase">Role</th>
+                <th className="text-left py-3 px-4 text-xs font-semibold text-gray-500 uppercase">Name</th>
                 <th className="text-left py-3 px-4 text-xs font-semibold text-gray-500 uppercase">Email</th>
+                <th className="text-left py-3 px-4 text-xs font-semibold text-gray-500 uppercase">Branch</th>
+                <th className="text-left py-3 px-4 text-xs font-semibold text-gray-500 uppercase">Role</th>
                 <th className="text-left py-3 px-4 text-xs font-semibold text-gray-500 uppercase">Status</th>
                 <th className="text-left py-3 px-4 text-xs font-semibold text-gray-500 uppercase">Actions</th>
               </tr>
@@ -161,7 +160,7 @@ export default function UserManagement() {
               {isLoading ? (
                 Array.from({ length: 5 }).map((_, i) => (
                   <tr key={i} className="border-b border-gray-50">
-                    {Array.from({ length: 6 }).map((_, j) => (
+                    {Array.from({ length: 5 }).map((_, j) => (
                       <td key={j} className="py-3 px-4"><div className="h-4 bg-gray-200 rounded animate-pulse w-3/4" /></td>
                     ))}
                   </tr>
@@ -171,17 +170,20 @@ export default function UserManagement() {
               ) : (
                 data?.items.map(user => (
                   <tr key={user.id} className="border-b border-gray-50 hover:bg-gray-50 transition-colors">
-                    <td className="py-3 px-4 text-sm font-medium text-gray-800">{user.branchName}</td>
-                    <td className="py-3 px-4 text-sm text-gray-600 font-mono">{user.branchCode}</td>
-                    <td className="py-3 px-4 text-sm text-gray-600">{user.contactPerson}</td>
+                    <td className="py-3 px-4 text-sm font-medium text-gray-800">{user.contactPerson}</td>
+                    <td className="py-3 px-4 text-sm text-gray-600">{user.email}</td>
+                    <td className="py-3 px-4 text-sm text-gray-600">{user.branchName}</td>
                     <td className="py-3 px-4 text-sm text-gray-600">
                       {user.branchRole ? (
-                        <span className="px-2 py-0.5 rounded-full bg-red-50 text-red-700 text-xs font-medium">{user.branchRole}</span>
+                        <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${
+                          user.branchRole === "IT" ? "bg-blue-50 text-blue-700" :
+                          user.branchRole === "Branch Admin" ? "bg-green-50 text-green-700" :
+                          "bg-amber-50 text-amber-700"
+                        }`}>{user.branchRole}</span>
                       ) : (
                         <span className="text-gray-400 text-xs">—</span>
                       )}
                     </td>
-                    <td className="py-3 px-4 text-sm text-gray-600">{user.email}</td>
                     <td className="py-3 px-4">
                       <span className={`px-2.5 py-1 rounded-full text-xs font-medium ${user.isActive ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-500"}`}>
                         {user.isActive ? "Active" : "Inactive"}

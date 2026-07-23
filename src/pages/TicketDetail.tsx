@@ -7,7 +7,7 @@ import {
   ArrowLeft, Send, Clock, User, Tag,
   Building2, Calendar, Loader2, RefreshCw,
   Download, X, ChevronLeft, ChevronRight,
-  Paperclip, FileText, Image,
+  Paperclip, FileText, Image, ImageIcon,
 } from "lucide-react";
 
 export default function TicketDetail() {
@@ -19,6 +19,9 @@ export default function TicketDetail() {
   const chatRef = useRef<HTMLDivElement>(null);
 
   const [comment, setComment] = useState("");
+  const [commentFiles, setCommentFiles] = useState<File[]>([]);
+  const [commentUploading, setCommentUploading] = useState(false);
+  const [statusChanging, setStatusChanging] = useState(false);
   const [activeTab, setActiveTab] = useState<"conversation" | "timeline">("conversation");
   const [statusDropdown, setStatusDropdown] = useState(false);
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
@@ -33,8 +36,44 @@ export default function TicketDetail() {
     { role: ticket?.branchRole ?? undefined },
     { enabled: !!ticket?.branchRole }
   );
+  const recordAttachment = trpc.ticket.recordAttachment.useMutation();
   const { data: settings } = trpc.settings.list.useQuery();
   const liveChatEnabled = settings?.live_chat_enabled !== "false";
+
+  const formConfigData = Array.isArray(formConfig) ? formConfig[0] : formConfig;
+  const filesEnabled = formConfigData?.filesEnabled ?? true;
+
+  async function compressImage(file: File, maxBytes = 1_000_000): Promise<Blob> {
+    if (!file.type.startsWith("image/")) return file;
+    if (file.size <= maxBytes) return file;
+    return new Promise((resolve, reject) => {
+      const img = new Image();
+      const url = URL.createObjectURL(file);
+      img.onload = () => {
+        URL.revokeObjectURL(url);
+        let quality = 0.85;
+        const canvas = document.createElement("canvas");
+        canvas.width = img.width;
+        canvas.height = img.height;
+        const ctx = canvas.getContext("2d")!;
+        ctx.drawImage(img, 0, 0);
+        const tryCompress = () => {
+          canvas.toBlob(
+            (blob) => {
+              if (!blob) { reject(new Error("Compression failed")); return; }
+              if (blob.size <= maxBytes || quality <= 0.1) resolve(blob);
+              else { quality -= 0.1; tryCompress(); }
+            },
+            "image/jpeg",
+            quality
+          );
+        };
+        tryCompress();
+      };
+      img.onerror = () => reject(new Error("Failed to load image"));
+      img.src = url;
+    });
+  }
 
   useEffect(() => {
     const el = chatRef.current;
@@ -47,15 +86,20 @@ export default function TicketDetail() {
     onSuccess: () => {
       utils.ticketComment.list.invalidate({ ticketId });
       utils.ticketTimeline.list.invalidate({ ticketId });
-      setComment("");
     },
   });
 
   const changeStatus = trpc.ticket.changeStatus.useMutation({
-    onSuccess: () => {
-      utils.ticket.byId.invalidate({ id: ticketId });
-      utils.ticketTimeline.list.invalidate({ ticketId });
+    onSuccess: async () => {
       setStatusDropdown(false);
+      await Promise.all([
+        utils.ticket.byId.invalidate({ id: ticketId }),
+        utils.ticketTimeline.list.invalidate({ ticketId }),
+      ]);
+      setStatusChanging(false);
+    },
+    onError: () => {
+      setStatusChanging(false);
     },
   });
 
@@ -78,14 +122,41 @@ export default function TicketDetail() {
     );
   }
 
-  const handleSendComment = () => {
+  const handleSendComment = async () => {
     const text = comment.trim();
-    if (!text || addComment.isPending) return;
-    setComment("");
-    addComment.mutate({ ticketId, content: text });
+    if ((!text && commentFiles.length === 0) || addComment.isPending || commentUploading) return;
+    setCommentUploading(true);
+    try {
+      const result = await addComment.mutateAsync({ ticketId, content: text || "(attachment)" });
+      if (commentFiles.length > 0 && result?.id) {
+        for (const file of commentFiles) {
+          const compressed = await compressImage(file);
+          const ext = file.name.split(".").pop() || "jpg";
+          const fileName = `${ticketId}/${Date.now()}_${Math.random().toString(36).slice(2, 8)}.${ext}`;
+          const { error: uploadError } = await supabase.storage
+            .from("ticket-attachments")
+            .upload(fileName, compressed, { contentType: file.type, upsert: false });
+          if (uploadError) throw uploadError;
+          await recordAttachment.mutateAsync({
+            ticketId,
+            commentId: result.id,
+            fileName: file.name,
+            fileType: file.type,
+            fileSize: compressed.size,
+            filePath: fileName,
+          });
+        }
+        utils.ticketComment.list.invalidate({ ticketId });
+      }
+      setComment("");
+      setCommentFiles([]);
+    } finally {
+      setCommentUploading(false);
+    }
   };
 
   const handleStatusChange = (statusId: string) => {
+    setStatusChanging(true);
     changeStatus.mutate({ ticketId, statusId });
   };
 
@@ -150,7 +221,7 @@ export default function TicketDetail() {
               <div className="flex items-center gap-3 flex-wrap">
                 <span className="font-mono text-red-600 font-medium">{ticket.ticketNumber}</span>
                 <span
-                  className="px-2.5 py-1 rounded-full text-xs font-medium"
+                  className="px-2.5 py-1 rounded-full text-xs font-medium transition-all duration-500 ease-in-out"
                   style={{ backgroundColor: `${statusColor}20`, color: statusColor }}
                 >
                   {ticket.status?.name || "Unknown"}
@@ -171,12 +242,17 @@ export default function TicketDetail() {
             <div className="relative">
               <button
                 onClick={() => setStatusDropdown(!statusDropdown)}
-                className="flex items-center gap-2 px-4 py-2 bg-red-600 hover:bg-red-700 text-white text-sm font-medium rounded-lg transition-colors"
+                disabled={statusChanging}
+                className="flex items-center gap-2 px-4 py-2 bg-red-600 hover:bg-red-700 text-white text-sm font-medium rounded-lg transition-colors disabled:opacity-60"
               >
-                <RefreshCw className="w-4 h-4" />
-                Change Status
+                {statusChanging ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : (
+                  <RefreshCw className="w-4 h-4" />
+                )}
+                {statusChanging ? "Updating Status..." : "Change Status"}
               </button>
-              {statusDropdown && (
+              {statusDropdown && !statusChanging && (
                 <>
                   <div className="fixed inset-0 z-40" onClick={() => setStatusDropdown(false)} />
                   <div className="absolute right-0 top-full mt-1 w-56 bg-white rounded-lg shadow-xl border border-gray-200 z-50 py-1">
@@ -341,14 +417,63 @@ export default function TicketDetail() {
                             }
                           }}
                         />
+
+                        {/* File attachment preview */}
+                        {commentFiles.length > 0 && (
+                          <div className="mt-2 grid grid-cols-2 sm:grid-cols-3 gap-2">
+                            {commentFiles.map((file, i) => (
+                              <div key={i} className="relative group bg-gray-50 rounded-lg border border-gray-200 overflow-hidden">
+                                <img src={URL.createObjectURL(file)} alt={file.name} className="w-full h-16 object-cover" />
+                                <div className="p-1">
+                                  <p className="text-[9px] text-gray-500 truncate">{file.name}</p>
+                                </div>
+                                <button
+                                  type="button"
+                                  onClick={() => setCommentFiles(commentFiles.filter((_, idx) => idx !== i))}
+                                  className="absolute top-1 right-1 bg-red-600 text-white rounded-full w-4 h-4 flex items-center justify-center text-[10px] opacity-0 group-hover:opacity-100 transition-opacity"
+                                >×</button>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+
                         <div className="flex items-center justify-between mt-2">
-                          <p className="text-[10px] text-gray-400">Press Ctrl+Enter to send</p>
+                          <div className="flex items-center gap-2">
+                            <p className="text-[10px] text-gray-400">Ctrl+Enter to send</p>
+                            {filesEnabled && (
+                              <>
+                                <input
+                                  type="file"
+                                  multiple
+                                  accept="image/*"
+                                  onChange={(e) => {
+                                    const selected = Array.from(e.target.files ?? []);
+                                    const valid = selected.filter(f => {
+                                      if (!f.type.startsWith("image/")) return false;
+                                      if (f.size > 2 * 1024 * 1024) return false;
+                                      return true;
+                                    });
+                                    setCommentFiles(prev => [...prev, ...valid]);
+                                  }}
+                                  className="hidden"
+                                  id="comment-files"
+                                />
+                                <label
+                                  htmlFor="comment-files"
+                                  className="flex items-center gap-1 px-2 py-1 text-xs text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded cursor-pointer transition-colors"
+                                >
+                                  <ImageIcon className="w-3.5 h-3.5" />
+                                  Attach
+                                </label>
+                              </>
+                            )}
+                          </div>
                           <button
                             onClick={handleSendComment}
-                            disabled={!comment.trim() || addComment.isPending}
+                            disabled={(!comment.trim() && commentFiles.length === 0) || addComment.isPending || commentUploading}
                             className="flex items-center gap-2 px-4 py-2 bg-red-600 hover:bg-red-700 text-white text-sm font-medium rounded-lg transition-colors disabled:opacity-30"
                           >
-                            {addComment.isPending ? (
+                            {(addComment.isPending || commentUploading) ? (
                               <Loader2 className="w-4 h-4 animate-spin" />
                             ) : (
                               <Send className="w-4 h-4" />

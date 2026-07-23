@@ -136,7 +136,7 @@ export default function CreateTicket() {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!validate()) return;
+    if (!validate() || createTicket.isPending) return;
     createTicket.mutate({
       subject,
       description,

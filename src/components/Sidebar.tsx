@@ -16,6 +16,8 @@ import {
   Package,
   Building2,
   Layers,
+  Mail,
+  User,
 } from "lucide-react";
 
 interface SidebarProps {
@@ -31,11 +33,13 @@ const branchNavItems: NavItem[] = [
   { label: "My Tickets", icon: Ticket, path: "/tickets" },
   { label: "Create Ticket", icon: Ticket, path: "/tickets/new" },
   { label: "Stationary", icon: Package, path: "/stationary" },
+  { label: "Email Settings", icon: Mail, path: "/email-settings" },
 ];
 
 const clusterNavItems: NavItem[] = [
   { label: "Dashboard", icon: LayoutDashboard, path: "/" },
   { label: "Orders", icon: Package, path: "/cluster/orders" },
+  { label: "Email Settings", icon: Mail, path: "/email-settings" },
 ];
 
 const settingsChildren: NavItem[] = [
@@ -202,10 +206,31 @@ export default function Sidebar({ isAdmin, mobile, onClose }: SidebarProps) {
       {/* User Info & Logout */}
       <div className="p-3 border-t border-gray-200">
         <div className="px-3 py-2 mb-2">
-          <p className="text-sm font-medium text-gray-800 truncate">
-            {user?.type === "admin" ? user.name || "Admin" : user?.type === "cluster" ? user.name || "Cluster Admin" : user?.branchName || "Branch"}
-          </p>
-          <p className="text-xs text-gray-500 capitalize">{user?.type === "cluster" ? "Cluster Admin" : user?.type} User</p>
+          {user?.type === "branch" ? (
+            <>
+              <p className="text-sm font-medium text-gray-800 truncate">{user.name}</p>
+              <p className="text-xs text-gray-500 truncate">{user.email}</p>
+              <div className="flex items-center gap-2 mt-1.5">
+                <span className={`px-1.5 py-0.5 rounded text-[10px] font-semibold ${
+                  user.branchRole === "IT" ? "bg-blue-100 text-blue-700" :
+                  user.branchRole === "Branch Admin" ? "bg-green-100 text-green-700" :
+                  user.branchRole === "Manager" ? "bg-amber-100 text-amber-700" :
+                  "bg-gray-100 text-gray-600"
+                }`}>{user.branchRole || "User"}</span>
+                <span className="text-[10px] text-gray-400 truncate">{user.branchName}</span>
+              </div>
+            </>
+          ) : user?.type === "cluster" ? (
+            <>
+              <p className="text-sm font-medium text-gray-800 truncate">{user.name || "Cluster Admin"}</p>
+              <p className="text-xs text-gray-500 truncate">{user.email}</p>
+            </>
+          ) : (
+            <>
+              <p className="text-sm font-medium text-gray-800 truncate">{user?.name || "Admin"}</p>
+              <p className="text-xs text-gray-500 capitalize">{user?.type || "admin"} User</p>
+            </>
+          )}
         </div>
         <button
           onClick={() => setShowLogoutConfirm(true)}
