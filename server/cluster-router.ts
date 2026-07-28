@@ -379,7 +379,7 @@ export const clusterRouter = createRouter({
 
       let query = supabase
         .from("stationary_orders")
-        .select("*, stationary_order_items(*, stationary_items(name, unit))")
+        .select("*, stationary_order_items(*, stationary_items(name, unit, threshold))")
         .eq("clusterId", clusterId)
         .gte("orderDate", monthStart)
         .lt("orderDate", monthEnd)
@@ -410,7 +410,7 @@ export const clusterRouter = createRouter({
         orderDate: o.orderDate,
         createdAt: o.createdAt,
         total: (o.stationary_order_items ?? []).reduce((s: number, li: { lineTotal?: number }) => s + Number(li.lineTotal ?? 0), 0),
-        items: (o.stationary_order_items ?? []).map((li: { id: string; itemId: string; quantity: number; unitPrice?: number; lineTotal?: number; stationary_items?: { name?: string; unit?: string | null } }) => ({
+        items: (o.stationary_order_items ?? []).map((li: { id: string; itemId: string; quantity: number; unitPrice?: number; lineTotal?: number; stationary_items?: { name?: string; unit?: string | null; threshold?: number | null } }) => ({
           id: li.id,
           itemId: li.itemId,
           quantity: li.quantity,
@@ -418,6 +418,7 @@ export const clusterRouter = createRouter({
           lineTotal: li.lineTotal ?? 0,
           name: li.stationary_items?.name ?? "",
           unit: li.stationary_items?.unit ?? null,
+          threshold: li.stationary_items?.threshold ?? 0,
         })),
       }));
 
@@ -554,13 +555,55 @@ export const clusterRouter = createRouter({
     .mutation(async ({ ctx, input }) => {
       const supabase = getSupabaseAdmin();
       const user = ctx.user as { type: string; clusterId?: string | null; id: string; name?: string | null };
-      const { data: li, error } = await supabase
+
+      // Fetch the line item with its order and item details
+      const { data: li, error: liErr } = await supabase
+        .from("stationary_order_items")
+        .select("orderId, itemId, quantity")
+        .eq("id", input.orderItemId)
+        .single();
+      if (liErr || !li) throw new Error("Order item not found");
+
+      // Fetch the order to get branchId
+      const { data: order } = await supabase
+        .from("stationary_orders")
+        .select("branchId")
+        .eq("id", li.orderId)
+        .single();
+      if (!order) throw new Error("Order not found");
+
+      // Fetch the item's threshold
+      const { data: item } = await supabase
+        .from("stationary_items")
+        .select("name, threshold")
+        .eq("id", li.itemId)
+        .single();
+      const threshold = item?.threshold ?? 0;
+
+      // Validate threshold: sum all quantities for this branch+item across the order (excluding current item)
+      if (threshold > 0) {
+        const { data: siblings } = await supabase
+          .from("stationary_order_items")
+          .select("itemId, quantity, orderId")
+          .eq("itemId", li.itemId);
+        let otherQty = 0;
+        for (const s of siblings ?? []) {
+          if (s.orderId === li.orderId && s.itemId === li.itemId) {
+            otherQty += s.quantity;
+          }
+        }
+        // current line item qty being replaced — subtract old, add new
+        const totalAfter = otherQty - li.quantity + input.quantity;
+        if (totalAfter > threshold) {
+          throw new Error(`Quantity exceeds the per-branch limit for ${item?.name ?? "item"} (max ${threshold} per window)`);
+        }
+      }
+
+      const { error: updErr } = await supabase
         .from("stationary_order_items")
         .update({ quantity: input.quantity })
-        .eq("id", input.orderItemId)
-        .select("orderId")
-        .single();
-      if (error) throw new Error(error.message);
+        .eq("id", input.orderItemId);
+      if (updErr) throw new Error(updErr.message);
       await createAuditLog({ userId: user.id, userType: "cluster", userName: user.name || "Cluster Admin", action: "edit_cluster_order_qty", entityType: "stationaryOrder", entityId: li.orderId, details: { orderItemId: input.orderItemId, quantity: input.quantity } });
       return { success: true };
     }),

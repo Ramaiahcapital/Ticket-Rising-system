@@ -147,7 +147,11 @@ export default function ClusterOrders() {
                     {!o.clusterApprovedAt && o.status !== "cancelled" ? (
                       editing?.orderId === o.id && editing?.itemId === li.id ? (
                         <>
-                          <input type="number" value={editing!.qty} onChange={e => setEditing({ ...editing!, qty: Number(e.target.value) })} className="w-16 px-2 py-1 border border-gray-300 rounded-lg text-sm" />
+                          <input type="number" min={0} max={li.threshold || undefined} value={editing!.qty} onChange={e => {
+                            const val = Math.max(0, li.threshold ? Math.min(Number(e.target.value), li.threshold) : Number(e.target.value));
+                            setEditing({ ...editing!, qty: val });
+                          }} className="w-16 px-2 py-1 border border-gray-300 rounded-lg text-sm" />
+                          {li.threshold > 0 && <span className="text-[10px] text-gray-400">max {li.threshold}</span>}
                           <button onClick={() => { updateQty.mutate({ orderItemId: li.id, quantity: editing!.qty }); setEditing(null); }} className="px-2 py-1 bg-red-600 text-white text-xs rounded-lg">OK</button>
                         </>
                       ) : (

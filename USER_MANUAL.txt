@@ -1,0 +1,316 @@
+================================================================================
+                    RAMAIAH CAPITAL - TICKET MANAGEMENT SYSTEM
+                           USER MANUAL v1.0
+================================================================================
+
+
+TABLE OF CONTENTS
+-----------------
+  1. Admin Features
+  2. Branch User Features
+  3. Cluster User Features
+
+
+================================================================================
+                        1. ADMIN FEATURES
+================================================================================
+
+DASHBOARD
+---------
+  - View total tickets, total branches, and active branches at a glance.
+  - Use Department Buckets (IT / Branch Admin / Manager) to see open ticket
+    counts per department. Click a bucket to filter tickets by that department.
+  - View Status Distribution chart showing tickets broken down by status.
+  - View Stationary Budget chart showing spending per branch.
+  - View Branch Performance chart showing ticket volume per branch.
+  - Browse the Recent Tickets table and click any row to open ticket detail.
+  - Use quick-action buttons to jump to Manage Users, Reports, or View All Tickets.
+
+
+TICKETS
+-------
+  - View all tickets from every branch.
+  - Use Department Bucket tabs (All / IT / Branch Admin / Manager) with live
+    open-ticket counts and red pulse indicators for new tickets.
+  - Search tickets by ticket number, subject, or keyword.
+  - Filter by Status, Branch, Department, or Date Range.
+  - Export all tickets to Excel with one click (spinner shown during export).
+  - Click any ticket to open its detail page.
+
+  Ticket Detail Page:
+    - Change ticket status using the Status dropdown.
+    - Reply to the conversation with text messages and image attachments
+      (images auto-compress to fit size limits).
+    - View the Conversation tab for a full email-thread-style view with
+      author info, timestamps, and attachment previews.
+    - View the Timeline History tab for a complete audit trail of every
+      action on the ticket.
+    - View ticket details sidebar: Status, Branch, Role, Created By,
+      Assigned To, Created Date, Updated Date.
+    - View custom fields and description.
+    - Click images to open a lightbox with prev/next navigation.
+
+
+BRANCH USERS
+-------------
+  - View stats: Total Users, Active, Inactive.
+  - Search users by name, branch, or email.
+  - Filter by status: All, Active, Inactive.
+  - View the user table with Name, Email, Branch, Role (color-coded badge),
+    Status, and Actions.
+  - Add a new branch user via the Add Branch User button. Fill in Branch,
+    Contact Person, Role (IT / Branch Admin / Manager), Email, Mobile,
+    Address, Username, and Password.
+  - Edit user details (branch, contact person, email, mobile, address, role).
+  - Reset a user's password (new password generated and shown with copy button).
+  - Activate or deactivate a user account.
+  - Delete a user (with confirmation).
+
+
+AUDIT LOG
+---------
+  - View all system activity with timestamps, user info, action type, entity,
+    and details.
+  - Filter by action type.
+  - Navigate pages with Previous/Next buttons.
+
+
+REPORTS
+-------
+  - Select a date range (From / To dates).
+  - Click Generate to produce a report for that period.
+  - View summary cards: Total Tickets, Date Range.
+  - View charts: By Status, By Priority, By Branch, By Category.
+  - View a Ticket Details table (up to 50 tickets).
+  - Export the report data to CSV.
+
+
+SETTINGS
+--------
+
+  Ticket Settings:
+    - Configure Ticket Numbering format (e.g., YYYY-XXXXXX) with a preview
+      of the next ticket number.
+    - Set Company Name and Tagline for branding.
+    - Configure Attachment Settings: Max size and allowed file types.
+    - Set Items Per Page and Session Timeout.
+    - Toggle Live Chat on or off for ticket conversations.
+    - Connect Google account for email notifications.
+
+  Ticket Form:
+    - Switch between role tabs: IT, Branch Admin, Manager.
+    - Toggle Ticket Portal on or off per role (controls whether that role
+      can create tickets).
+    - Build custom fields per role: add text, textarea, dropdown, radio,
+      or checkbox fields. Set labels, required flags, placeholders, and
+      options. Reorder or remove fields.
+    - Toggle File Attachments on or off per role.
+    - See a live preview of the form as the role would see it.
+
+  Branches:
+    - View all branches in a selectable list showing name, code, and
+      contact person.
+    - View users assigned to each branch.
+    - Add a new branch (name, code, contact person, address).
+    - Edit or delete a branch.
+
+  Clusters:
+    Three tabs are available:
+
+    Clusters Tab:
+      - View cluster cards with name, code, and active/inactive status.
+      - Add a new cluster (name, code).
+      - Edit or delete a cluster.
+      - View branches in a selected cluster.
+      - Assign branches to a cluster (multi-select from unassigned branches).
+      - Remove branches from a cluster.
+
+    Cluster Users Tab:
+      - View users table: Username, Name, Email, Cluster, Status, Actions.
+      - Add a cluster user (username, name, email, select cluster).
+        Password is auto-generated and shown once.
+      - Activate or deactivate cluster users.
+      - Reset cluster user password.
+      - Delete a cluster user.
+
+    Branch Assignments Tab:
+      - Search branches.
+      - Filter: All, Unassigned, Assigned, or by specific cluster.
+      - Assign a branch to a cluster via dropdown.
+      - Unassign a branch from its cluster.
+
+  Status Management:
+    - View all statuses with order number, name (colored badge), color swatch,
+      state (Open/Closed), and enabled toggle.
+    - Add a new status (name, color picker with presets and custom hex,
+      open/closed state, description).
+    - Edit or delete a status.
+    - Toggle enabled/disabled to hide a status from new assignments without
+      removing it from existing tickets.
+
+  Stationary Admin:
+    Four tabs are available:
+
+    Items Tab:
+      - View all items with name, unit, price, threshold, active status.
+      - Add a new item (name, unit, price, threshold per branch, description).
+      - Edit or delete items.
+
+    Portal Settings Tab:
+      - Toggle the Stationary Portal on or off.
+      - Set the order window: Open datetime and Close datetime.
+      - Select allowed roles: IT, Branch Admin, Manager.
+      - Save settings.
+
+    Orders Tab:
+      - Filter by Month, Branch, and Status (all / pending / fulfilled /
+        cancelled).
+      - View branch-wise totals summary with grand total.
+      - View order cards per branch with date, total, and status dropdown.
+      - Change order status to Pending, Fulfilled, or Cancelled.
+      - Edit order item quantities inline.
+
+    Reports Tab:
+      - Select date range or month.
+      - Click Generate to produce a pivot report.
+      - View items as rows and branches as columns with Qty and Price.
+      - Export to Excel.
+      - Print the report.
+
+
+================================================================================
+                      2. BRANCH USER FEATURES
+================================================================================
+
+DASHBOARD
+---------
+  - View a welcome banner with your branch name.
+  - Use the Create Ticket button for quick access.
+  - View stat cards: Total Tickets, Open, In Progress, Solved (scoped to
+    your branch only).
+  - View a Ticket Status Breakdown pie chart.
+  - Browse Recent Activity timeline showing status changes and comments.
+  - View My Recent Tickets table with clickable rows.
+  - Click View All to see the full ticket list.
+
+
+MY TICKETS
+----------
+  - View only your own branch tickets (automatically filtered).
+  - View the table: Ticket ID, Subject, Status, Created, Actions.
+  - Search by ticket ID, subject, or keyword.
+  - Filter by Status or Date Range.
+  - Export your tickets to Excel.
+  - Click the Create Ticket button to open a new ticket.
+  - Click any ticket to open its detail page.
+
+
+CREATE TICKET
+-------------
+  - Enter a Subject (minimum 5 characters).
+  - Fill in Custom Fields as configured by your admin (text inputs, text
+    areas, dropdowns, radio buttons, or checkboxes). Required fields are
+    marked.
+  - Enter a Description (minimum 20 characters, character counter shown).
+  - Attach images (max 2MB each, auto-compressed). File attachments can be
+    enabled or disabled by your admin.
+  - Review your entries in the Ticket Preview sidebar.
+  - Click Submit Ticket to create. A duplicate prevention check runs
+    automatically.
+  - Click Cancel to discard.
+
+
+TICKET DETAIL
+-------------
+  - View your ticket details: Status, Branch, Role, Created By, Created Date,
+    Updated Date.
+  - View custom fields and description.
+  - Reply to the conversation with text messages and image attachments.
+  - View the Conversation tab for a full thread with author info, timestamps,
+    and attachment previews.
+  - View the Timeline History tab for the complete action trail.
+  - Click images to open a lightbox with prev/next navigation.
+
+
+STATIONARY
+----------
+  - View available stationary items with name, unit, threshold, and remaining
+    quantity.
+  - Use +/- buttons or type a quantity for each item (capped at threshold).
+  - Review your Order Cart sidebar showing selected items and quantities.
+  - Set an order date (read-only, follows the order window).
+  - Click Place Order to submit (confirmation modal shown).
+  - View your order history: date, status badge (Pending / Fulfilled /
+    Cancelled), and item list.
+  - Note: You can place one order per branch per order window. The portal
+    must be enabled and the order window must be open.
+
+
+EMAIL SETTINGS
+--------------
+  - Connect your Gmail account using the Google Connect button.
+  - Once connected, your email address will be used to send notifications
+    when you create tickets or place stationary orders.
+  - Disconnect your Google account at any time.
+
+
+================================================================================
+                      3. CLUSTER USER FEATURES
+================================================================================
+
+DASHBOARD
+---------
+  - View your cluster name as the page heading.
+  - If unassigned, an amber warning banner is shown.
+  - Use the Month Picker to filter data by month.
+  - View stat cards: Total Branches (in your cluster), Branches Ordered,
+    Pending Approval.
+  - View the Branch Grid showing all branches in your cluster with status
+    badges:
+      * Pending (amber)  -- branch has ordered but awaiting your approval
+      * Ordered (green)  -- branch has ordered and been approved
+      * No badge         -- branch has not ordered yet
+
+
+ORDERS
+------
+  - View your cluster name as the page heading.
+  - If unassigned, an amber warning banner is shown.
+  - View stats: Pending Approval count, Total Orders count.
+  - Filter by Month and Status (all / pending / fulfilled / cancelled).
+  - View Branch-Wise Summary cards showing order counts per branch.
+  - View order cards per branch with branch name and order date.
+  - For each pending order:
+      * Review item list with quantities, units, and prices.
+      * Edit order item quantities inline before approving.
+      * Click Approve (green) to approve the order. An email is sent to
+        all admins.
+      * Click Reject (red) to reject the order. An email is sent to the
+        branch user.
+  - View approved or rejected badges on processed orders.
+
+
+EMAIL SETTINGS
+--------------
+  - Connect your Gmail account using the Google Connect button.
+  - Once connected, your email address will be used to send notifications
+    when you approve or reject stationary orders.
+  - Disconnect your Google account at any time.
+
+
+================================================================================
+                          NOTIFICATION FLOW
+================================================================================
+
+  Event                                   Who Receives Email
+  -----------------------------------     -----------------------------------
+  Branch creates a ticket                 All Admins
+  Cluster approves a stationary order     All Admins
+  Cluster rejects a stationary order      Branch User (who placed the order)
+  Admin cancels a stationary order        Branch User (who placed the order)
+  Branch places a stationary order        Cluster Users
+
+
+================================================================================
+                            END OF USER MANUAL
+================================================================================

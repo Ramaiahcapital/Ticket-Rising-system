@@ -542,7 +542,7 @@ export const stationaryRouter = createRouter({
 
       let query = supabase
         .from("stationary_orders")
-        .select("*, stationary_order_items(*, stationary_items(name, unit))")
+        .select("*, stationary_order_items(*, stationary_items(name, unit, threshold))")
         .gte("orderDate", monthStart)
         .lt("orderDate", monthEnd)
         .or("clusterApprovedAt.not.is.null,clusterId.is.null")
@@ -575,7 +575,7 @@ export const stationaryRouter = createRouter({
         orderDate: o.orderDate,
         createdAt: o.createdAt,
         total: (o.stationary_order_items ?? []).reduce((s: number, li: { lineTotal?: number }) => s + Number(li.lineTotal ?? 0), 0),
-        items: (o.stationary_order_items ?? []).map((li: { id: string; itemId: string; quantity: number; unitPrice?: number; lineTotal?: number; stationary_items?: { name?: string; unit?: string | null } }) => ({
+        items: (o.stationary_order_items ?? []).map((li: { id: string; itemId: string; quantity: number; unitPrice?: number; lineTotal?: number; stationary_items?: { name?: string; unit?: string | null; threshold?: number | null } }) => ({
           id: li.id,
           itemId: li.itemId,
           quantity: li.quantity,
@@ -583,6 +583,7 @@ export const stationaryRouter = createRouter({
           lineTotal: li.lineTotal ?? 0,
           name: li.stationary_items?.name ?? "",
           unit: li.stationary_items?.unit ?? null,
+          threshold: li.stationary_items?.threshold ?? 0,
         })),
       }));
 
@@ -607,13 +608,54 @@ export const stationaryRouter = createRouter({
     .input(z.object({ orderItemId: z.string(), quantity: z.number().int().min(0) }))
     .mutation(async ({ ctx, input }) => {
       const supabase = getSupabaseAdmin();
-      const { data: li, error } = await supabase
+
+      // Fetch the line item with its order and item details
+      const { data: li, error: liErr } = await supabase
+        .from("stationary_order_items")
+        .select("orderId, itemId, quantity")
+        .eq("id", input.orderItemId)
+        .single();
+      if (liErr || !li) throw new Error("Order item not found");
+
+      // Fetch the order to get branchId
+      const { data: order } = await supabase
+        .from("stationary_orders")
+        .select("branchId")
+        .eq("id", li.orderId)
+        .single();
+      if (!order) throw new Error("Order not found");
+
+      // Fetch the item's threshold
+      const { data: item } = await supabase
+        .from("stationary_items")
+        .select("name, threshold")
+        .eq("id", li.itemId)
+        .single();
+      const threshold = item?.threshold ?? 0;
+
+      // Validate threshold
+      if (threshold > 0) {
+        const { data: siblings } = await supabase
+          .from("stationary_order_items")
+          .select("itemId, quantity, orderId")
+          .eq("itemId", li.itemId);
+        let otherQty = 0;
+        for (const s of siblings ?? []) {
+          if (s.orderId === li.orderId && s.itemId === li.itemId) {
+            otherQty += s.quantity;
+          }
+        }
+        const totalAfter = otherQty - li.quantity + input.quantity;
+        if (totalAfter > threshold) {
+          throw new Error(`Quantity exceeds the per-branch limit for ${item?.name ?? "item"} (max ${threshold} per window)`);
+        }
+      }
+
+      const { error: updErr } = await supabase
         .from("stationary_order_items")
         .update({ quantity: input.quantity })
-        .eq("id", input.orderItemId)
-        .select("orderId")
-        .single();
-      if (error) throw new Error(error.message);
+        .eq("id", input.orderItemId);
+      if (updErr) throw new Error(updErr.message);
       await createAuditLog({ userId: ctx.user.id, userType: "admin", action: "edit_stationary_order_qty", entityType: "stationaryOrder", entityId: li.orderId, details: { orderItemId: input.orderItemId, quantity: input.quantity } });
       return { success: true };
     }),
