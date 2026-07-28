@@ -362,6 +362,28 @@ export const clusterRouter = createRouter({
     return data ?? null;
   }),
 
+  // ---------------- Cluster user: list branches in own cluster ----------------
+  clusterBranches: authedQuery.query(async ({ ctx }) => {
+    const user = ctx.user as { type: string; clusterId?: string | null };
+    if (!user.clusterId) return [];
+    const supabase = getSupabaseAdmin();
+    const { data, error } = await supabase
+      .from("profiles")
+      .select("id, branchName, branchCode, branchRole, email, isActive")
+      .eq("clusterId", user.clusterId)
+      .eq("role", "branch")
+      .order("branchName");
+    if (error) throw new Error(error.message);
+    return (data ?? []).map((u: any) => ({
+      id: u.id,
+      name: u.branchName,
+      branch_code: u.branchCode,
+      branch_role: u.branchRole,
+      email: u.email,
+      is_active: u.isActive,
+    }));
+  }),
+
   // ---------------- Cluster admin: list orders for branches in their cluster ----------------
   clusterOrders: authedQuery
     .input(z.object({ clusterId: z.string(), status: z.string().optional(), month: z.string().optional() }).optional())

@@ -7,10 +7,7 @@ export default function ClusterDashboard() {
   const { user } = useAuth();
   const clusterUser = user as { type: string; clusterId?: string | null; clusterName?: string | null } | null;
   const { data: cluster } = trpc.cluster.myCluster.useQuery();
-  const { data: branches, isLoading: branchesLoading } = trpc.cluster.branches.useQuery(
-    { clusterId: clusterUser?.clusterId || "" },
-    { enabled: !!clusterUser?.clusterId }
-  );
+  const { data: branches, isLoading: branchesLoading } = trpc.cluster.clusterBranches.useQuery();
 
   const defaultMonth = `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, "0")}`;
   const [month, setMonth] = useState(defaultMonth);
