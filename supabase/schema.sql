@@ -159,6 +159,7 @@ create table if not exists public.ticket_comments (
   id uuid primary key default gen_random_uuid(),
   "ticketId" uuid not null references public.tickets (id) on delete cascade,
   content text not null,
+  "contentHtml" text,
   "authorId" uuid not null,
   "authorType" text not null check ("authorType" in ('admin', 'branch')),
   "authorName" text not null,

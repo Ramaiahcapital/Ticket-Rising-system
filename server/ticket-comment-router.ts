@@ -3,6 +3,31 @@ import { createRouter, authedQuery } from "./middleware.js";
 import { getSupabaseAdmin } from "./lib/supabase.js";
 import { createTimelineEntry, createNotification, notifyAllAdmins } from "./lib/utils.js";
 
+function sanitizeHtml(html: string): string {
+  return html
+    .replace(/<\s*(script|iframe|object|embed|form)[^>]*>[\s\S]*?<\s*\/\s*\1\s*>/gi, "")
+    .replace(/<\s*(script|iframe|object|embed|form)[^>]*\/?\s*>/gi, "")
+    .replace(/\s(on\w+)\s*=\s*("[^"]*"|'[^']*'|[^\s>]+)/gi, "")
+    .replace(/javascript\s*:/gi, "")
+    .replace(/<style[\s\S]*?<\/style>/gi, "")
+    .replace(/<meta[^>]*>/gi, "");
+}
+
+function htmlToPlainText(html: string): string {
+  return html
+    .replace(/<br\s*\/?>/gi, "\n")
+    .replace(/<\/(p|div|li|h[1-6]|blockquote|pre)>/gi, "\n")
+    .replace(/<[^>]+>/g, "")
+    .replace(/&nbsp;/g, " ")
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
 export const ticketCommentRouter = createRouter({
   list: authedQuery
     .input(z.object({ ticketId: z.string() }))
@@ -49,6 +74,7 @@ export const ticketCommentRouter = createRouter({
       z.object({
         ticketId: z.string(),
         content: z.string().min(1),
+        contentHtml: z.string().optional(),
         isInternal: z.boolean().default(false),
       })
     )
@@ -77,7 +103,8 @@ export const ticketCommentRouter = createRouter({
         .from("ticket_comments")
         .insert({
           ticketId: input.ticketId,
-          content: input.content,
+          content: input.contentHtml ? htmlToPlainText(input.contentHtml) || input.content : input.content,
+          contentHtml: input.contentHtml ? sanitizeHtml(input.contentHtml) : null,
           authorId: ctx.user.id,
           authorType: ctx.user.type,
           authorName: actorName,
@@ -117,7 +144,7 @@ export const ticketCommentRouter = createRouter({
         });
       }
 
-      return { id: commentId, content: input.content };
+      return { id: commentId, content: input.content, contentHtml: input.contentHtml ?? null };
     }),
 
   delete: authedQuery

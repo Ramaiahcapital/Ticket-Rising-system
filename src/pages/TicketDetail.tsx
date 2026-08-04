@@ -3,6 +3,7 @@ import { useParams, useNavigate } from "react-router";
 import { trpc } from "@/providers/trpc";
 import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/lib/supabase";
+import RichTextEditor from "@/components/RichTextEditor";
 import {
   ArrowLeft, Send, Clock, User, Tag,
   Building2, Calendar, Loader2, RefreshCw,
@@ -19,6 +20,7 @@ export default function TicketDetail() {
   const chatRef = useRef<HTMLDivElement>(null);
 
   const [comment, setComment] = useState("");
+  const [commentHtml, setCommentHtml] = useState("");
   const [commentFiles, setCommentFiles] = useState<File[]>([]);
   const [commentUploading, setCommentUploading] = useState(false);
   const [statusChanging, setStatusChanging] = useState(false);
@@ -127,7 +129,11 @@ export default function TicketDetail() {
     if ((!text && commentFiles.length === 0) || addComment.isPending || commentUploading) return;
     setCommentUploading(true);
     try {
-      const result = await addComment.mutateAsync({ ticketId, content: text || "(attachment)" });
+      const result = await addComment.mutateAsync({
+        ticketId,
+        content: text || "(attachment)",
+        contentHtml: commentHtml || undefined,
+      });
       if (commentFiles.length > 0 && result?.id) {
         for (const file of commentFiles) {
           const compressed = await compressImage(file);
@@ -149,6 +155,7 @@ export default function TicketDetail() {
         utils.ticketComment.list.invalidate({ ticketId });
       }
       setComment("");
+      setCommentHtml("");
       setCommentFiles([]);
     } finally {
       setCommentUploading(false);
@@ -226,6 +233,9 @@ export default function TicketDetail() {
                 >
                   {ticket.status?.name || "Unknown"}
                 </span>
+                {(ticket as any).statusChangedAt && (
+                  <span className="text-[11px] text-gray-400">updated {new Date((ticket as any).statusChangedAt).toLocaleDateString()} {new Date((ticket as any).statusChangedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>
+                )}
                 {ticket.branchRole && (
                   <span className={`px-2 py-0.5 rounded text-xs font-medium ${
                     ticket.branchRole === "IT" ? "bg-blue-50 text-blue-700" :
@@ -302,9 +312,11 @@ export default function TicketDetail() {
 
             <div className="p-4">
               {activeTab === "conversation" ? (
-                <div className="space-y-4">
-                  {/* Original message (ticket description) */}
-                  <div className="border border-gray-200 rounded-lg overflow-hidden">
+                <div className="flex flex-col h-[60vh] min-h-[420px]">
+                  {/* Full chat thread (original message + all replies) scrolls as one */}
+                  <div ref={chatRef} className="chat-scroll flex-1 min-h-0 overflow-y-auto space-y-3 pr-2 mb-3">
+                    {/* Original message (ticket description) */}
+                    <div className="border border-gray-200 rounded-lg overflow-hidden">
                     <div className="bg-gray-50 px-4 py-3 border-b border-gray-200">
                       <div className="flex items-center gap-2">
                         <div className="w-7 h-7 rounded-full bg-blue-100 flex items-center justify-center flex-shrink-0">
@@ -328,9 +340,9 @@ export default function TicketDetail() {
                     </div>
                   </div>
 
-                  {/* Comments as email thread */}
-                  <div ref={chatRef} className="space-y-0 max-h-[500px] overflow-auto">
-                    {comments?.length === 0 && (
+                    {/* Comments as email thread */}
+                    <div className="space-y-0">
+                      {comments?.length === 0 && (
                       <div className="text-center py-8 text-gray-400 text-sm">
                         No replies yet. Send the first reply below.
                       </div>
@@ -368,17 +380,25 @@ export default function TicketDetail() {
                           </div>
                           {/* Email body */}
                           <div className="px-4 py-3">
-                            <p className="text-sm text-gray-700 whitespace-pre-wrap leading-relaxed">{c.content}</p>
+                            {(c as any).contentHtml ? (
+                              <div
+                                className="rich-text text-sm text-gray-700 leading-relaxed"
+                                dangerouslySetInnerHTML={{ __html: (c as any).contentHtml }}
+                              />
+                            ) : (
+                              <p className="text-sm text-gray-700 whitespace-pre-wrap leading-relaxed">{c.content}</p>
+                            )}
                             {c.attachments && c.attachments.length > 0 && renderAttachments(c.attachments)}
                           </div>
                         </div>
                       );
                     })}
+                    </div>
                   </div>
 
                   {/* Input */}
                   {!liveChatEnabled ? (
-                    <div className="relative pt-3 border-t border-gray-100">
+                    <div className="relative pt-3 border-t border-gray-100 flex-shrink-0">
                       <div className="blur-[4px] pointer-events-none">
                         <div className="flex gap-2">
                           <textarea
@@ -399,23 +419,19 @@ export default function TicketDetail() {
                       </div>
                     </div>
                   ) : (
-                    <div className="border border-gray-200 rounded-lg overflow-hidden">
+                    <div className="border border-gray-200 rounded-lg overflow-hidden flex-shrink-0">
                       <div className="bg-gray-50 px-4 py-2 border-b border-gray-200">
                         <p className="text-xs text-gray-500 font-medium">Reply</p>
                       </div>
                       <div className="p-3">
-                        <textarea
-                          value={comment}
-                          onChange={(e) => setComment(e.target.value)}
-                          placeholder="Type your reply..."
-                          rows={3}
-                          className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:border-red-500 resize-none"
-                          onKeyDown={(e) => {
-                            if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
-                              e.preventDefault();
-                              handleSendComment();
-                            }
+                        <RichTextEditor
+                          value={commentHtml}
+                          onChange={(html, text) => {
+                            setCommentHtml(html);
+                            setComment(text);
                           }}
+                          placeholder="Type your reply..."
+                          onCtrlEnter={handleSendComment}
                         />
 
                         {/* File attachment preview */}
@@ -486,7 +502,7 @@ export default function TicketDetail() {
                   )}
                 </div>
               ) : (
-                <div className="space-y-0 max-h-[500px] overflow-auto">
+                <div className="chat-scroll space-y-0 h-[60vh] min-h-[420px] overflow-y-auto pr-2">
                   {timeline?.length === 0 && (
                     <div className="text-center py-8 text-gray-400 text-sm">
                       No timeline events yet.
@@ -542,6 +558,14 @@ export default function TicketDetail() {
                 </span>
               </div>
 
+              {(ticket as any).statusChangedAt && (
+                <div className="flex items-center gap-2">
+                  <Clock className="w-4 h-4 text-gray-400" />
+                  <span className="text-gray-500">Status Updated:</span>
+                  <span className="ml-auto">{new Date((ticket as any).statusChangedAt).toLocaleDateString()} {new Date((ticket as any).statusChangedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>
+                </div>
+              )}
+
               <div className="flex items-center gap-2">
                 <Building2 className="w-4 h-4 text-gray-400" />
                 <span className="text-gray-500">Branch:</span>
@@ -586,6 +610,13 @@ export default function TicketDetail() {
                   <span className="text-gray-500">Updated:</span>
                   <span className="ml-auto">{new Date(ticket.updatedAt ?? new Date()).toLocaleDateString()}</span>
                 </div>
+                {(ticket as any).statusChangedAt && (
+                  <div className="flex items-center gap-2 mt-1">
+                    <RefreshCw className="w-4 h-4 text-gray-400" />
+                    <span className="text-gray-500">Status Updated:</span>
+                    <span className="ml-auto">{new Date((ticket as any).statusChangedAt).toLocaleDateString()} {new Date((ticket as any).statusChangedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>
+                  </div>
+                )}
               </div>
             </div>
           </div>

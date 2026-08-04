@@ -95,6 +95,7 @@ export type TicketRow = {
   isActive: boolean;
   createdAt: string | null;
   updatedAt: string | null;
+  statusChangedAt: string | null;
   solvedAt: string | null;
   closedAt: string | null;
   customFields: Record<string, unknown> | null;
@@ -118,6 +119,7 @@ export type TicketCommentRow = {
   id: string;
   ticketId: string;
   content: string;
+  contentHtml: string | null;
   authorId: string;
   authorType: "admin" | "branch";
   authorName: string;

@@ -410,6 +410,7 @@ export const ticketRouter = createRouter({
       const updateData: Partial<TicketRow> = {
         statusId: input.statusId,
         updatedAt: new Date().toISOString(),
+        statusChangedAt: new Date().toISOString(),
       };
 
       if (newStatus && !newStatus.isOpen) {
@@ -433,7 +434,19 @@ export const ticketRouter = createRouter({
 
       const actorName = getActorName(ctx);
 
-      const { error } = await supabase.from("tickets").update(updateData).eq("id", input.ticketId);
+      // Try to persist statusChangedAt; fall back gracefully if the column doesn't exist yet
+      let error: any = null;
+      try {
+        const res = await supabase.from("tickets").update(updateData).eq("id", input.ticketId);
+        error = res.error;
+      } catch (e) {
+        error = e;
+      }
+      if (error && String(error.message).includes("statusChangedAt")) {
+        const { statusChangedAt, ...safe } = updateData;
+        const retry = await supabase.from("tickets").update(safe).eq("id", input.ticketId);
+        error = retry.error;
+      }
       if (error) throw new Error(error.message);
 
       await createTimelineEntry({
