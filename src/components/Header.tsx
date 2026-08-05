@@ -125,7 +125,7 @@ export default function Header({ onMenuClick }: HeaderProps) {
           <span className="text-white text-sm font-medium">
             {user?.type === "admin"
               ? (user.name?.[0] || "A").toUpperCase()
-              : (user?.branchName?.[0] || "B").toUpperCase()}
+              : ((user as { branchName?: string | null }).branchName?.[0] || "B").toUpperCase()}
           </span>
         </div>
       </div>

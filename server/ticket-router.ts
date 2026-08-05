@@ -8,6 +8,7 @@ import {
   createNotification,
   notifyAllAdmins,
   createAuditLog,
+  requireRoleExists,
 } from "./lib/utils.js";
 import { sendEmailFromUser } from "./email-service.js";
 import type { TrpcContext } from "./context.js";
@@ -31,7 +32,7 @@ export const ticketRouter = createRouter({
         priorityId: z.string().optional(),
         categoryId: z.string().optional(),
         branchId: z.string().optional(),
-        branchRole: z.enum(["IT", "Branch Admin", "Manager"]).optional(),
+        branchRole: z.string().max(100).optional(),
         assignedTo: z.string().optional(),
         dateFrom: z.string().optional(),
         dateTo: z.string().optional(),
@@ -85,7 +86,7 @@ export const ticketRouter = createRouter({
 
       const enrichedItems = (items ?? []).map((t) => {
         const profile = profileMap.get(t.branchId ?? "") || null;
-        const branchName = profile?.branchName || branchMap.get(profile?.branchId) || null;
+        const branchName = profile?.branchName || branchMap.get(profile?.branchId ?? "") || null;
         return {
           ...t,
           status: statusMap.get(t.statusId ?? "") || null,
@@ -118,16 +119,22 @@ export const ticketRouter = createRouter({
     if (openStatus) query = query.eq("statusId", openStatus.id);
     const { data: tickets } = await query;
 
-    const counts: Record<string, number> = { IT: 0, "Branch Admin": 0, Manager: 0 };
+    const { data: roles } = await supabase
+      .from("branch_roles")
+      .select("*")
+      .order("sortOrder", { ascending: true });
+
+    const counts: Record<string, number> = {};
+    for (const r of roles ?? []) counts[r.name] = 0;
     for (const t of tickets ?? []) {
       const role = (t as any).branchRole as string | undefined;
       if (role && role in counts) counts[role]++;
     }
-    return [
-      { name: "IT", count: counts.IT, color: "#3B82F6" },
-      { name: "Branch Admin", count: counts["Branch Admin"], color: "#8B5CF6" },
-      { name: "Manager", count: counts.Manager, color: "#F59E0B" },
-    ];
+    return (roles ?? []).map((r) => ({
+      name: r.name,
+      count: counts[r.name] ?? 0,
+      color: r.color,
+    }));
   }),
 
   listExport: adminQuery
@@ -136,7 +143,7 @@ export const ticketRouter = createRouter({
         search: z.string().optional(),
         statusId: z.string().optional(),
         branchId: z.string().optional(),
-        branchRole: z.enum(["IT", "Branch Admin", "Manager"]).optional(),
+        branchRole: z.string().max(100).optional(),
         dateFrom: z.string().optional(),
         dateTo: z.string().optional(),
       }).optional()
@@ -211,7 +218,7 @@ export const ticketRouter = createRouter({
   create: authedQuery
     .input(
       z.object({
-        subject: z.string().min(5).max(500),
+        subject: z.string().min(1).max(500).optional(),
         description: z.string().min(20),
         categoryId: z.string().optional(),
         subcategoryId: z.string().optional(),
@@ -228,6 +235,15 @@ export const ticketRouter = createRouter({
       }
 
       const ticketNumber = await generateTicketNumber();
+
+      // Subject: use the provided value, else fall back to the first custom field answer
+      const derivedSubject =
+        (input.subject ?? "").trim() ||
+        Object.values(input.customFields ?? {}).find(
+          (v) => typeof v === "string" && v.trim().length > 0
+        )?.trim() ||
+        "New Ticket";
+      const subject = derivedSubject;
 
       const { data: defaultStatuses } = await supabase
         .from("ticket_statuses")
@@ -247,7 +263,7 @@ export const ticketRouter = createRouter({
         .from("tickets")
         .insert({
           ticketNumber,
-          subject: input.subject,
+          subject,
           description: input.description,
           categoryId: input.categoryId ?? null,
           subcategoryId: input.subcategoryId ?? null,
@@ -283,12 +299,12 @@ export const ticketRouter = createRouter({
         action: "create_ticket",
         entityType: "ticket",
         entityId: ticketId,
-        details: { ticketNumber, subject: input.subject },
+        details: { ticketNumber, subject },
       });
 
       await notifyAllAdmins({
         title: "New Ticket Created",
-        message: `Ticket ${ticketNumber} - ${input.subject} was created by ${actorName}`,
+        message: `Ticket ${ticketNumber} - ${subject} was created by ${actorName}`,
         type: "ticket_created",
         ticketId,
       });
@@ -313,12 +329,12 @@ export const ticketRouter = createRouter({
               await sendEmailFromUser(
                 ctx.user.id,
                 admin.email,
-                `New Ticket: ${ticketNumber} - ${input.subject}`,
+                `New Ticket: ${ticketNumber} - ${subject}`,
                 `<div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;">
                   <h2 style="color:#DC2626;">New Support Ticket</h2>
                   <table style="width:100%;border-collapse:collapse;">
                     <tr><td style="padding:8px;font-weight:bold;border-bottom:1px solid #eee;">Ticket #</td><td style="padding:8px;border-bottom:1px solid #eee;">${ticketNumber}</td></tr>
-                    <tr><td style="padding:8px;font-weight:bold;border-bottom:1px solid #eee;">Subject</td><td style="padding:8px;border-bottom:1px solid #eee;">${input.subject}</td></tr>
+                    <tr><td style="padding:8px;font-weight:bold;border-bottom:1px solid #eee;">Subject</td><td style="padding:8px;border-bottom:1px solid #eee;">${subject}</td></tr>
                     <tr><td style="padding:8px;font-weight:bold;border-bottom:1px solid #eee;">Branch</td><td style="padding:8px;border-bottom:1px solid #eee;">${branchLabel}</td></tr>
                     <tr><td style="padding:8px;font-weight:bold;border-bottom:1px solid #eee;">Department</td><td style="padding:8px;border-bottom:1px solid #eee;">${input.department || "Not specified"}</td></tr>
                     <tr><td style="padding:8px;font-weight:bold;border-bottom:1px solid #eee;">Description</td><td style="padding:8px;border-bottom:1px solid #eee;">${input.description}</td></tr>
@@ -629,7 +645,7 @@ export const ticketRouter = createRouter({
   upsertFormConfig: adminQuery
     .input(
       z.object({
-        role: z.enum(["IT", "Branch Admin", "Manager"]),
+        role: z.string().min(1).max(100),
         fields: z.array(
           z.object({
             id: z.string(),
@@ -646,6 +662,7 @@ export const ticketRouter = createRouter({
     )
     .mutation(async ({ input }) => {
       const supabase = getSupabaseAdmin();
+      await requireRoleExists(supabase, input.role);
       const { data, error } = await supabase
         .from("ticket_form_config")
         .upsert(

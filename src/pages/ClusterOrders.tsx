@@ -31,7 +31,6 @@ export default function ClusterOrders() {
   const [editing, setEditing] = useState<{ orderId: string; itemId: string; qty: number } | null>(null);
   const orders = ordersData?.orders ?? [];
   const branchTotals = ordersData?.branchTotals ?? [];
-  const grandTotal = ordersData?.grandTotal ?? 0;
 
   const pendingCount = orders.filter((o: any) => !o.clusterApprovedAt && o.status !== "cancelled").length;
 

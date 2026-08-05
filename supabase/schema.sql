@@ -16,7 +16,7 @@ create table if not exists public.profiles (
   "branchName" text,
   "branchCode" text,
   "contactPerson" text,
-  "branchRole" text check ("branchRole" in ('IT', 'Branch Admin', 'Manager')),
+  "branchRole" text,
   mobile text,
   address text,
   "isActive" boolean not null default true,
@@ -128,7 +128,7 @@ create table if not exists public.tickets (
   "priorityId" uuid references public.ticket_priorities (id),
   "statusId" uuid references public.ticket_statuses (id),
   department text,
-  "branchRole" text check ("branchRole" in ('IT', 'Branch Admin', 'Manager')),
+  "branchRole" text,
   "branchId" uuid not null references public.profiles (id),
   "createdBy" uuid not null references public.profiles (id),
   "assignedTo" uuid references public.profiles (id),
@@ -220,6 +220,32 @@ create table if not exists public.system_settings (
   "updatedAt" timestamptz not null default now(),
   "updatedBy" uuid
 );
+
+-- ─── Branch Roles (admin-managed, dynamic) ─────────────────────
+create table if not exists public.branch_roles (
+  id uuid primary key default gen_random_uuid(),
+  name text not null unique,
+  color text not null default '#6B7280',
+  "sortOrder" int not null default 0,
+  "isActive" boolean not null default true,
+  "createdAt" timestamptz not null default now(),
+  "updatedAt" timestamptz not null default now()
+);
+
+alter table public.branch_roles enable row level security;
+drop policy if exists "branch_roles_admin_all" on public.branch_roles;
+create policy "branch_roles_admin_all" on public.branch_roles
+  for all using (true) with check (true);
+drop policy if exists "branch_roles_branch_read" on public.branch_roles;
+create policy "branch_roles_branch_read" on public.branch_roles
+  for select using (true);
+alter publication supabase_realtime add table public.branch_roles;
+
+insert into public.branch_roles (name, color, "sortOrder", "isActive") values
+  ('IT', '#3B82F6', 1, true),
+  ('Branch Admin', '#8B5CF6', 2, true),
+  ('Manager', '#F59E0B', 3, true)
+on conflict (name) do nothing;
 
 -- ─── Email Templates ────────────────────────────────────────────
 create table if not exists public.email_templates (

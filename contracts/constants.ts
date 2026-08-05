@@ -6,6 +6,3 @@ export const ErrorMessages = {
 export const Paths = {
   login: "/login",
 } as const;
-
-export const BRANCH_ROLES = ["IT", "Branch Admin", "Manager"] as const;
-export type BranchRole = (typeof BRANCH_ROLES)[number];

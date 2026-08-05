@@ -20,6 +20,7 @@ import ClusterManagement from "@/pages/ClusterManagement";
 import ClusterDashboard from "@/pages/ClusterDashboard";
 import ClusterOrders from "@/pages/ClusterOrders";
 import TicketFormConfig from "@/pages/TicketFormConfig";
+import RolesManagement from "@/pages/RolesManagement";
 import EmailConnectPage from "@/pages/EmailConnectPage";
 import NotFound from "@/pages/NotFound";
 
@@ -158,6 +159,14 @@ export default function App() {
         element={
           <ProtectedRoute requireAdmin>
             <TicketFormConfig />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/roles"
+        element={
+          <ProtectedRoute requireAdmin>
+            <RolesManagement />
           </ProtectedRoute>
         }
       />

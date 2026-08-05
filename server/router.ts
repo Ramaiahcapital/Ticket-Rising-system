@@ -1,5 +1,6 @@
 import { authRouter } from "./auth-router.js";
 import { branchUserRouter } from "./branch-user-router.js";
+import { branchRoleRouter } from "./branch-role-router.js";
 import { branchRouter } from "./branch-router.js";
 import { clusterRouter } from "./cluster-router.js";
 import { ticketRouter } from "./ticket-router.js";
@@ -21,6 +22,7 @@ export const appRouter = createRouter({
   ping: publicQuery.query(() => ({ ok: true, ts: Date.now() })),
   auth: authRouter,
   branchUser: branchUserRouter,
+  branchRole: branchRoleRouter,
   branch: branchRouter,
   cluster: clusterRouter,
   ticket: ticketRouter,

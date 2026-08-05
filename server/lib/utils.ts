@@ -3,6 +3,7 @@ import type {
   AuditLogRow,
   NotificationRow,
   Profile,
+  Role,
   TicketTimelineRow,
 } from "./db-types.js";
 
@@ -70,7 +71,7 @@ export async function createTimelineEntry(params: {
   ticketId: string;
   action: string;
   actorId: string;
-  actorType: "admin" | "branch";
+  actorType: Role;
   actorName: string;
   previousValue?: string;
   newValue?: string;
@@ -140,4 +141,17 @@ export async function notifyAllAdmins(params: {
 // Get client IP from request
 export function getClientIP(req: Request): string {
   return req.headers.get("x-forwarded-for") || req.headers.get("x-real-ip") || "unknown";
+}
+
+// Check whether a branch role name exists in the dynamic branch_roles table
+export async function roleExists(supabase: ReturnType<typeof getSupabaseAdmin>, role: string): Promise<boolean> {
+  const { data } = await supabase.from("branch_roles").select("id").eq("name", role).maybeSingle();
+  return !!data;
+}
+
+// Throw if the branch role does not exist
+export async function requireRoleExists(supabase: ReturnType<typeof getSupabaseAdmin>, role: string): Promise<void> {
+  if (!(await roleExists(supabase, role))) {
+    throw new Error(`Branch role "${role}" does not exist`);
+  }
 }

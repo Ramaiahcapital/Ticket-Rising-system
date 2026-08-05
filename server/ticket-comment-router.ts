@@ -97,7 +97,7 @@ export const ticketCommentRouter = createRouter({
 
       const actorName = ctx.user.type === "admin"
         ? (ctx.user.name || "Admin")
-        : (ctx.user.name || ctx.user.branchName || "Branch");
+        : (ctx.user.name || (ctx.user as { branchName?: string | null }).branchName || "Branch");
 
       const { data, error } = await supabase
         .from("ticket_comments")

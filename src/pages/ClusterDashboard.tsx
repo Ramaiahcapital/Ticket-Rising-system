@@ -18,7 +18,6 @@ export default function ClusterDashboard() {
   );
 
   const orders = ordersData?.orders ?? [];
-  const branchTotals = ordersData?.branchTotals ?? [];
 
   // Branches that have ordered this month
   const orderedBranchCodes = new Set(orders.filter((o: any) => o.status !== "cancelled").map((o: any) => o.branchCode));

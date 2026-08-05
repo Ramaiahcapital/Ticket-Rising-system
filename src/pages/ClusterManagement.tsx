@@ -5,7 +5,6 @@ import { Plus, Pencil, Trash2, X, Save, Loader2, Building2, Users, Search, UserP
 type Tab = "clusters" | "users" | "branches";
 
 export default function ClusterManagement() {
-  const utils = trpc.useUtils();
   const [tab, setTab] = useState<Tab>("clusters");
 
   return (
@@ -370,7 +369,6 @@ function BranchAssignmentsTab() {
   const utils = trpc.useUtils();
   const { data: branches, isLoading } = trpc.cluster.allBranchUsers.useQuery();
   const { data: clusters } = trpc.cluster.list.useQuery();
-  const assignBranches = trpc.cluster.assignBranches.useMutation({ onSuccess: () => { utils.cluster.allBranchUsers.invalidate(); utils.cluster.branches.invalidate(); utils.cluster.availableBranchUsers.invalidate(); } });
   const unassignBranches = trpc.cluster.unassignBranches.useMutation({ onSuccess: () => { utils.cluster.allBranchUsers.invalidate(); utils.cluster.branches.invalidate(); utils.cluster.availableBranchUsers.invalidate(); } });
 
   const [filterCluster, setFilterCluster] = useState<string>("all");
@@ -442,7 +440,7 @@ function BranchAssignmentsTab() {
 }
 
 /* ───── Assign Branch Modal (single) ───── */
-function AssignSingleBranchMenu({ branchId, branchName, clusters, onAssigned }: { branchId: string; branchName: string; clusters: any[]; onAssigned: () => void }) {
+function AssignSingleBranchMenu({ branchId, clusters, onAssigned }: { branchId: string; branchName: string; clusters: any[]; onAssigned: () => void }) {
   const assignBranches = trpc.cluster.assignBranches.useMutation({ onSuccess: onAssigned });
   const [open, setOpen] = useState(false);
 

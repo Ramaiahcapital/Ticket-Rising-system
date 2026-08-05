@@ -1,13 +1,13 @@
 import { useState } from "react";
 import { trpc } from "@/providers/trpc";
+import { useBranchRoles } from "@/hooks/useBranchRoles";
 import {
   Plus, Search, Pencil, KeyRound, Power, Trash2,
   ChevronLeft, ChevronRight, X, Loader2, UserCheck, UserX,
 } from "lucide-react";
 
-const BRANCH_ROLES = ["IT", "Branch Admin", "Manager"] as const;
-
 export default function UserManagement() {
+  const { activeRoles, getColor } = useBranchRoles();
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState<"all" | "active" | "inactive">("all");
@@ -19,7 +19,7 @@ export default function UserManagement() {
   // Form state
   const [form, setForm] = useState<{
     branchId: string; contactPerson: string;
-    email: string; mobile: string; address: string; username: string; password: string; branchRole: "" | "IT" | "Branch Admin" | "Manager";
+    email: string; mobile: string; address: string; username: string; password: string; branchRole: string;
   }>({
     branchId: "", contactPerson: "",
     email: "", mobile: "", address: "", username: "", password: "", branchRole: "",
@@ -78,7 +78,7 @@ export default function UserManagement() {
     if (!form.branchRole) errors.branchRole = "Select a role";
     if (Object.keys(errors).length > 0) { setFormErrors(errors); return; }
 
-    const role = form.branchRole as "IT" | "Branch Admin" | "Manager";
+    const role = form.branchRole;
     if (editingId) {
       updateUser.mutate({ id: editingId, branchId: form.branchId, contactPerson: form.contactPerson, email: form.email, mobile: form.mobile, address: form.address, branchRole: role });
     } else {
@@ -175,11 +175,10 @@ export default function UserManagement() {
                     <td className="py-3 px-4 text-sm text-gray-600">{user.branchName}</td>
                     <td className="py-3 px-4 text-sm text-gray-600">
                       {user.branchRole ? (
-                        <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${
-                          user.branchRole === "IT" ? "bg-blue-50 text-blue-700" :
-                          user.branchRole === "Branch Admin" ? "bg-green-50 text-green-700" :
-                          "bg-amber-50 text-amber-700"
-                        }`}>{user.branchRole}</span>
+                        <span
+                          className="px-2 py-0.5 rounded-full text-xs font-medium"
+                          style={{ backgroundColor: `${getColor(user.branchRole)}1A`, color: getColor(user.branchRole) }}
+                        >{user.branchRole}</span>
                       ) : (
                         <span className="text-gray-400 text-xs">—</span>
                       )}
@@ -241,9 +240,9 @@ export default function UserManagement() {
               <div><label className="block text-xs font-medium text-gray-700 mb-1">Contact Person *</label><input value={form.contactPerson} onChange={e => setForm({...form, contactPerson: e.target.value})} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:border-red-500 outline-none" /></div>
               <div>
                 <label className="block text-xs font-medium text-gray-700 mb-1">Branch Role</label>
-                <select value={form.branchRole} onChange={e => setForm({...form, branchRole: e.target.value as "" | "IT" | "Branch Admin" | "Manager"})} className={`w-full px-3 py-2 border rounded-lg text-sm focus:border-red-500 outline-none bg-white ${formErrors.branchRole ? "border-red-500" : "border-gray-300"}`}>
+                <select value={form.branchRole} onChange={e => setForm({...form, branchRole: e.target.value})} className={`w-full px-3 py-2 border rounded-lg text-sm focus:border-red-500 outline-none bg-white ${formErrors.branchRole ? "border-red-500" : "border-gray-300"}`}>
                   <option value="">— Select Role —</option>
-                  {BRANCH_ROLES.map(r => <option key={r} value={r}>{r}</option>)}
+                  {activeRoles.map(r => <option key={r.id} value={r.name}>{r.name}</option>)}
                 </select>
                 {formErrors.branchRole && <p className="mt-1 text-xs text-red-600">{formErrors.branchRole}</p>}
               </div>

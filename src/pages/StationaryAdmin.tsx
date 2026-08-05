@@ -1,7 +1,7 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef } from "react";
 import { trpc } from "@/providers/trpc";
+import { useBranchRoles } from "@/hooks/useBranchRoles";
 import { Plus, Pencil, Trash2, X, Loader2, Package, Settings2, ClipboardList, BarChart3, Save, Download, Printer } from "lucide-react";
-import { BRANCH_ROLES } from "@contracts/constants";
 import ExcelJS from "exceljs";
 
 type Tab = "items" | "portal" | "orders" | "reports";
@@ -150,6 +150,7 @@ function ItemsTab() {
 /* ===================== Portal Settings ===================== */
 function PortalTab() {
   const utils = trpc.useUtils();
+  const { activeRoles } = useBranchRoles();
   const { data: settings } = trpc.stationary.getPortalSettings.useQuery();
   const update = trpc.stationary.updatePortalSettings.useMutation({ onSuccess: () => utils.stationary.getPortalSettings.invalidate() });
 
@@ -207,10 +208,10 @@ function PortalTab() {
         <div>
           <label className="block text-xs font-medium text-gray-700 mb-2">Who can access the portal (by branch role)</label>
           <div className="flex flex-wrap gap-2">
-            {BRANCH_ROLES.map((r) => {
-              const on = roles.includes(r);
+            {activeRoles.map((r) => {
+              const on = roles.includes(r.name);
               return (
-                <button key={r} onClick={() => toggleRole(r)} className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors ${on ? "bg-red-50 border-red-600 text-red-600" : "bg-white border-gray-300 text-gray-600 hover:bg-gray-50"}`}>{r}</button>
+                <button key={r.id} onClick={() => toggleRole(r.name)} className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors ${on ? "bg-red-50 border-red-600 text-red-600" : "bg-white border-gray-300 text-gray-600 hover:bg-gray-50"}`}>{r.name}</button>
               );
             })}
           </div>

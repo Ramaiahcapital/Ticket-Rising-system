@@ -1,8 +1,8 @@
 import { z } from "zod";
 import { createRouter, adminQuery, authedQuery } from "./middleware.js";
 import { getSupabaseAdmin } from "./lib/supabase.js";
-import { createAuditLog } from "./lib/utils.js";
-import { BRANCH_ROLES, type BranchRole } from "./lib/db-types.js";
+import { createAuditLog, requireRoleExists } from "./lib/utils.js";
+import type { BranchRole } from "./lib/db-types.js";
 import { sendEmailFromUser } from "./email-service.js";
 
 const PORTAL_SETTINGS_ID = "00000000-0000-0000-0000-000000000000";
@@ -148,11 +148,16 @@ export const stationaryRouter = createRouter({
         enabled: z.boolean().optional(),
         windowOpenAt: z.string().nullable().optional(),
         windowCloseAt: z.string().nullable().optional(),
-        allowedRoles: z.array(z.enum(["IT", "Branch Admin", "Manager"])).optional(),
+        allowedRoles: z.array(z.string().min(1).max(100)).optional(),
       })
     )
     .mutation(async ({ ctx, input }) => {
       const supabase = getSupabaseAdmin();
+      if (input.allowedRoles !== undefined) {
+        for (const role of input.allowedRoles) {
+          await requireRoleExists(supabase, role);
+        }
+      }
       const set: Record<string, unknown> = { updatedAt: new Date().toISOString(), updatedBy: ctx.user.id };
       if (input.enabled !== undefined) set.enabled = input.enabled;
       if (input.windowOpenAt !== undefined) set.windowOpenAt = input.windowOpenAt;
@@ -714,5 +719,3 @@ export const stationaryRouter = createRouter({
     return (data ?? []).map((b) => ({ id: b.id, branchName: b.name, branchCode: b.code }));
   }),
 });
-
-export { BRANCH_ROLES };

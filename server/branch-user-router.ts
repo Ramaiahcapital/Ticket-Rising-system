@@ -2,7 +2,7 @@ import { z } from "zod";
 import { createRouter, adminQuery } from "./middleware.js";
 import { getSupabaseAdmin } from "./lib/supabase.js";
 import type { Profile } from "./lib/db-types.js";
-import { createAuditLog } from "./lib/utils.js";
+import { createAuditLog, requireRoleExists } from "./lib/utils.js";
 
 export const branchUserRouter = createRouter({
   list: adminQuery
@@ -97,7 +97,7 @@ export const branchUserRouter = createRouter({
     .input(
       z.object({
         branchId: z.string().min(1),
-        branchRole: z.enum(["IT", "Branch Admin", "Manager"]),
+        branchRole: z.string().min(1).max(100),
         contactPerson: z.string().min(1).max(255),
         email: z.string().email(),
         mobile: z.string().optional(),
@@ -117,6 +117,8 @@ export const branchUserRouter = createRouter({
         .maybeSingle();
       if (branchErr) throw new Error(branchErr.message);
       if (!branch) throw new Error("Selected branch not found");
+
+      await requireRoleExists(supabase, input.branchRole);
 
       // Check uniqueness
       const { data: existingUsername } = await supabase
@@ -196,7 +198,7 @@ export const branchUserRouter = createRouter({
       z.object({
         id: z.string(),
         branchId: z.string().optional(),
-        branchRole: z.enum(["IT", "Branch Admin", "Manager"]).optional(),
+        branchRole: z.string().min(1).max(100).optional(),
         contactPerson: z.string().min(1).max(255).optional(),
         email: z.string().email().optional(),
         mobile: z.string().optional(),
@@ -209,6 +211,10 @@ export const branchUserRouter = createRouter({
       const { id, ...updates } = input;
 
       if (Object.keys(updates).length === 0) throw new Error("No fields to update");
+
+      if (updates.branchRole !== undefined) {
+        await requireRoleExists(supabase, updates.branchRole);
+      }
 
       const set: Partial<Profile> = { updatedAt: new Date().toISOString() };
       if (updates.branchId !== undefined) {

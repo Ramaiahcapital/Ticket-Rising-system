@@ -2,19 +2,21 @@ import { useState, useRef, useEffect } from "react";
 import { useParams, useNavigate } from "react-router";
 import { trpc } from "@/providers/trpc";
 import { useAuth } from "@/hooks/useAuth";
+import { useBranchRoles } from "@/hooks/useBranchRoles";
 import { supabase } from "@/lib/supabase";
 import RichTextEditor from "@/components/RichTextEditor";
 import {
   ArrowLeft, Send, Clock, User, Tag,
   Building2, Calendar, Loader2, RefreshCw,
   Download, X, ChevronLeft, ChevronRight,
-  Paperclip, FileText, Image, ImageIcon,
+  FileText, ImageIcon,
 } from "lucide-react";
 
 export default function TicketDetail() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const { user, isAdmin } = useAuth();
+  const { isAdmin } = useAuth();
+  const { getColor } = useBranchRoles();
   const ticketId = id ?? "";
 
   const chatRef = useRef<HTMLDivElement>(null);
@@ -237,11 +239,10 @@ export default function TicketDetail() {
                   <span className="text-[11px] text-gray-400">updated {new Date((ticket as any).statusChangedAt).toLocaleDateString()} {new Date((ticket as any).statusChangedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>
                 )}
                 {ticket.branchRole && (
-                  <span className={`px-2 py-0.5 rounded text-xs font-medium ${
-                    ticket.branchRole === "IT" ? "bg-blue-50 text-blue-700" :
-                    ticket.branchRole === "Branch Admin" ? "bg-purple-50 text-purple-700" :
-                    "bg-amber-50 text-amber-700"
-                  }`}>{ticket.branchRole}</span>
+                  <span
+                    className="px-2 py-0.5 rounded text-xs font-medium"
+                    style={{ backgroundColor: `${getColor(ticket.branchRole)}1A`, color: getColor(ticket.branchRole) }}
+                  >{ticket.branchRole}</span>
                 )}
               </div>
               <h1 className="text-lg font-semibold text-gray-800 mt-1">{ticket.subject}</h1>
@@ -348,7 +349,6 @@ export default function TicketDetail() {
                       </div>
                     )}
                     {comments?.map((c) => {
-                      const isOwnComment = c.authorType === user?.type;
                       const isAdminAuthor = c.authorType === "admin";
                       return (
                         <div key={c.id} className="border border-gray-200 rounded-lg overflow-hidden mb-3">
@@ -576,11 +576,10 @@ export default function TicketDetail() {
                   <Tag className="w-4 h-4 text-gray-400" />
                   <span className="text-gray-500">Role:</span>
                   <span className="ml-auto">
-                    <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${
-                      ticket.branchRole === "IT" ? "bg-blue-50 text-blue-700" :
-                      ticket.branchRole === "Branch Admin" ? "bg-purple-50 text-purple-700" :
-                      "bg-amber-50 text-amber-700"
-                    }`}>{ticket.branchRole}</span>
+                    <span
+                      className="px-2 py-0.5 rounded-full text-xs font-medium"
+                      style={{ backgroundColor: `${getColor(ticket.branchRole)}1A`, color: getColor(ticket.branchRole) }}
+                    >{ticket.branchRole}</span>
                   </span>
                 </div>
               )}

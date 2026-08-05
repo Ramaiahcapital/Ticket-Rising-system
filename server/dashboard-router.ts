@@ -74,18 +74,23 @@ export const dashboardRouter = createRouter({
       .slice(0, 10);
 
     // Department bucket counts
-    const deptCounts: Record<string, number> = { IT: 0, "Branch Admin": 0, Manager: 0 };
+    const { data: roles } = await supabase
+      .from("branch_roles")
+      .select("*")
+      .order("sortOrder", { ascending: true });
+    const deptCounts: Record<string, number> = {};
+    for (const r of roles ?? []) deptCounts[r.name] = 0;
     for (const t of allTickets ?? []) {
       const role = (t as any).branchRole as string | undefined;
       if (role && role in deptCounts) {
         deptCounts[role]++;
       }
     }
-    const departmentCounts = [
-      { name: "IT", count: deptCounts.IT, color: "#3B82F6" },
-      { name: "Branch Admin", count: deptCounts["Branch Admin"], color: "#8B5CF6" },
-      { name: "Manager", count: deptCounts.Manager, color: "#F59E0B" },
-    ];
+    const departmentCounts = (roles ?? []).map((r) => ({
+      name: r.name,
+      count: deptCounts[r.name] ?? 0,
+      color: r.color,
+    }));
 
     // Recent tickets
     const { data: recentTickets } = await supabase

@@ -2,6 +2,7 @@ import { z } from "zod";
 import { createRouter, adminQuery, authedQuery } from "./middleware.js";
 import { getSupabaseAdmin } from "./lib/supabase.js";
 import { createAuditLog } from "./lib/utils.js";
+import type { ClusterRow, Profile } from "./lib/db-types.js";
 import { env } from "./lib/env.js";
 import { sendEmailFromUser } from "./email-service.js";
 
@@ -36,7 +37,7 @@ export const clusterRouter = createRouter({
     .input(z.object({ id: z.string(), name: z.string().optional(), code: z.string().optional(), isActive: z.boolean().optional() }))
     .mutation(async ({ ctx, input }) => {
       const supabase = getSupabaseAdmin();
-      const set: Record<string, unknown> = { updatedAt: new Date().toISOString() };
+      const set: Partial<ClusterRow> = { updatedAt: new Date().toISOString() };
       if (input.name !== undefined) set.name = input.name;
       if (input.code !== undefined) set.code = input.code;
       if (input.isActive !== undefined) set.isActive = input.isActive;
@@ -238,7 +239,7 @@ export const clusterRouter = createRouter({
         const authBody = await authRes.text();
         throw new Error("auth_api_error: status=" + authRes.status + " body=" + authBody);
       }
-      const authData = await authRes.json();
+      const authData = (await authRes.json()) as { id?: string } | null;
       if (!authData?.id) throw new Error("No auth user returned. data:" + JSON.stringify(authData));
 
       const upsertResult = await supabase
@@ -290,7 +291,7 @@ export const clusterRouter = createRouter({
       const supabase = getSupabaseAdmin();
       const { id, ...updates } = input;
       if (Object.keys(updates).length === 0) throw new Error("No fields to update");
-      const set: Record<string, unknown> = { updatedAt: new Date().toISOString() };
+      const set: Partial<Profile> = { updatedAt: new Date().toISOString() };
       if (updates.name !== undefined) set.name = updates.name;
       if (updates.email !== undefined) set.email = updates.email;
       if (updates.username !== undefined) {
@@ -406,7 +407,7 @@ export const clusterRouter = createRouter({
         .gte("orderDate", monthStart)
         .lt("orderDate", monthEnd)
         .order("createdAt", { ascending: false });
-      if (input?.status && input.status !== "all") query = query.eq("status", input.status);
+      if (input?.status && input.status !== "all") query = query.eq("status", input.status as "pending" | "fulfilled" | "cancelled");
 
       const { data, error } = (await query) as any;
       if (error) throw new Error(error.message);
@@ -470,9 +471,9 @@ export const clusterRouter = createRouter({
         .from("stationary_orders")
         .update({ clusterApprovedAt: new Date().toISOString(), clusterApprovedBy: user.id })
         .eq("id", input.orderId)
-        .eq("clusterId", user.clusterId);
+        .eq("clusterId", user.clusterId ?? "");
       if (error) throw new Error(error.message);
-      await createAuditLog({ userId: user.id, userType: "cluster", userName: user.name || "Cluster Admin", action: "approve_cluster_order", entityType: "stationaryOrder", entityId: input.orderId });
+      await createAuditLog({ userId: user.id, userType: "system", userName: user.name || "Cluster Admin", action: "approve_cluster_order", entityType: "stationaryOrder", entityId: input.orderId });
 
       // Send email from cluster to all admins
       try {
@@ -530,9 +531,9 @@ export const clusterRouter = createRouter({
         .from("stationary_orders")
         .update({ status: "cancelled", clusterApprovedBy: user.id })
         .eq("id", input.orderId)
-        .eq("clusterId", user.clusterId);
+        .eq("clusterId", user.clusterId ?? "");
       if (error) throw new Error(error.message);
-      await createAuditLog({ userId: user.id, userType: "cluster", userName: user.name || "Cluster Admin", action: "reject_cluster_order", entityType: "stationaryOrder", entityId: input.orderId });
+      await createAuditLog({ userId: user.id, userType: "system", userName: user.name || "Cluster Admin", action: "reject_cluster_order", entityType: "stationaryOrder", entityId: input.orderId });
 
       try {
         const { data: order } = await supabase
@@ -626,7 +627,7 @@ export const clusterRouter = createRouter({
         .update({ quantity: input.quantity })
         .eq("id", input.orderItemId);
       if (updErr) throw new Error(updErr.message);
-      await createAuditLog({ userId: user.id, userType: "cluster", userName: user.name || "Cluster Admin", action: "edit_cluster_order_qty", entityType: "stationaryOrder", entityId: li.orderId, details: { orderItemId: input.orderItemId, quantity: input.quantity } });
+      await createAuditLog({ userId: user.id, userType: "system", userName: user.name || "Cluster Admin", action: "edit_cluster_order_qty", entityType: "stationaryOrder", entityId: li.orderId, details: { orderItemId: input.orderItemId, quantity: input.quantity } });
       return { success: true };
     }),
 });

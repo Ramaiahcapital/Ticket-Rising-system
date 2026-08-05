@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useNavigate, useLocation } from "react-router";
 import { useAuth } from "@/hooks/useAuth";
+import { useBranchRoles } from "@/hooks/useBranchRoles";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import {
   LayoutDashboard,
@@ -17,7 +18,6 @@ import {
   Building2,
   Layers,
   Mail,
-  User,
 } from "lucide-react";
 
 interface SidebarProps {
@@ -45,6 +45,7 @@ const clusterNavItems: NavItem[] = [
 const settingsChildren: NavItem[] = [
   { label: "Ticket Settings", icon: Settings, path: "/settings" },
   { label: "Ticket Form", icon: ClipboardList, path: "/ticket-form-config" },
+  { label: "Branch Roles", icon: Users, path: "/roles" },
   { label: "Branches", icon: Building2, path: "/branches" },
   { label: "Clusters", icon: Layers, path: "/clusters" },
   { label: "Status Management", icon: Tags, path: "/statuses" },
@@ -55,12 +56,14 @@ export default function Sidebar({ isAdmin, mobile, onClose }: SidebarProps) {
   const navigate = useNavigate();
   const location = useLocation();
   const { logout, user, isCluster } = useAuth();
+  const { getColor } = useBranchRoles();
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(
     location.pathname === "/settings" ||
       location.pathname === "/statuses" ||
       location.pathname === "/categories" ||
       location.pathname === "/ticket-form-config" ||
+      location.pathname === "/roles" ||
       location.pathname === "/stationary/admin" ||
       location.pathname === "/clusters"
   );
@@ -211,12 +214,10 @@ export default function Sidebar({ isAdmin, mobile, onClose }: SidebarProps) {
               <p className="text-sm font-medium text-gray-800 truncate">{user.name}</p>
               <p className="text-xs text-gray-500 truncate">{user.email}</p>
               <div className="flex items-center gap-2 mt-1.5">
-                <span className={`px-1.5 py-0.5 rounded text-[10px] font-semibold ${
-                  user.branchRole === "IT" ? "bg-blue-100 text-blue-700" :
-                  user.branchRole === "Branch Admin" ? "bg-green-100 text-green-700" :
-                  user.branchRole === "Manager" ? "bg-amber-100 text-amber-700" :
-                  "bg-gray-100 text-gray-600"
-                }`}>{user.branchRole || "User"}</span>
+                <span
+                  className="px-1.5 py-0.5 rounded text-[10px] font-semibold"
+                  style={{ backgroundColor: `${getColor(user.branchRole)}1A`, color: getColor(user.branchRole) }}
+                >{user.branchRole || "User"}</span>
                 <span className="text-[10px] text-gray-400 truncate">{user.branchName}</span>
               </div>
             </>

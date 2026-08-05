@@ -18,7 +18,7 @@ export type UnifiedUser =
       branchName: string;
       branchCode: string;
       role: "branch";
-      branchRole: "IT" | "Branch Admin" | "Manager" | null;
+      branchRole: string | null;
       branchId: string | null;
       clusterId: string | null;
       email: string;

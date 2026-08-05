@@ -18,7 +18,6 @@ type FieldDef = {
 export default function CreateTicket() {
   const navigate = useNavigate();
   const { user } = useAuth();
-  const [subject, setSubject] = useState("");
   const [description, setDescription] = useState("");
   const [customValues, setCustomValues] = useState<Record<string, unknown>>({});
   const [files, setFiles] = useState<File[]>([]);
@@ -39,6 +38,15 @@ export default function CreateTicket() {
   const portalEnabled = portalEnabledMap?.[(user as any)?.branchRole as string] ?? true;
   const fields: FieldDef[] = formConfigData?.fields ?? [];
   const filesEnabled = formConfigData?.filesEnabled ?? true;
+
+  // Subject is derived from the first custom field configured by the admin
+  const subject = (() => {
+    const first = fields[0];
+    if (!first) return "";
+    const v = customValues[first.id];
+    if (v === undefined || v === null) return "";
+    return Array.isArray(v) ? v.join(", ").trim() : String(v).trim();
+  })();
 
   // Compress image to ≤ 1MB using Canvas API
   async function compressImage(file: File, maxBytes = 1_000_000): Promise<Blob> {
@@ -118,8 +126,15 @@ export default function CreateTicket() {
 
   const validate = () => {
     const newErrors: Record<string, string> = {};
-    if (subject.length < 5) newErrors.subject = "Subject must be at least 5 characters";
     if (description.length < 20) newErrors.description = "Description must be at least 20 characters";
+    if (!subject) {
+      const first = fields[0];
+      if (first) {
+        newErrors[`custom_${first.id}`] = `${first.label} is required (used as the ticket subject)`;
+      } else {
+        newErrors.form = "Add at least one custom field to create a ticket (the first field is used as the subject)";
+      }
+    }
     for (const f of fields) {
       if (!f.required) continue;
       const v = customValues[f.id];
@@ -231,30 +246,14 @@ export default function CreateTicket() {
         {/* Form */}
         <form onSubmit={handleSubmit} className="lg:col-span-2 space-y-4">
           <div className="bg-white rounded-xl border border-gray-200 p-6 space-y-5">
-            {/* Subject */}
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">
-                Subject <span className="text-red-500">*</span>
-              </label>
-              <input
-                type="text"
-                value={subject}
-                onChange={(e) => setSubject(e.target.value)}
-                placeholder="Brief description of the issue"
-                className={`w-full px-3 py-2.5 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-red-500/20 focus:border-red-500 transition-colors ${
-                  errors.subject ? "border-red-300" : "border-gray-300"
-                }`}
-              />
-              {errors.subject && <p className="text-xs text-red-600 mt-1">{errors.subject}</p>}
-            </div>
-
-            {/* Custom Fields (configurable per role) */}
+            {/* Custom Fields (configurable per role) — first field becomes the ticket subject */}
             {fields.length > 0 && (
-              <div className="space-y-5 pt-1 border-t border-gray-100">
-                {fields.map((f) => (
+              <div className="space-y-5 pt-1">
+                {fields.map((f, fi) => (
                   <div key={f.id}>
                     <label className="block text-sm font-medium text-gray-700 mb-1.5">
                       {f.label} {f.required && <span className="text-red-500">*</span>}
+                      {fi === 0 && <span className="ml-2 text-[10px] font-normal text-gray-400">(used as ticket subject)</span>}
                     </label>
                     {renderCustomField(f)}
                     {errors[`custom_${f.id}`] && (
@@ -368,6 +367,7 @@ export default function CreateTicket() {
                 <span className="text-gray-500">Subject:</span>
                 <span className="text-gray-800 truncate max-w-[180px]">{subject || "-"}</span>
               </div>
+              <p className="text-[10px] text-gray-400">Subject is auto-filled from the first custom field</p>
               {fields.length > 0 && (
                 <div className="border-t border-gray-100 pt-2">
                   <p className="text-xs text-gray-500 mb-1">Custom fields: {fields.length}</p>

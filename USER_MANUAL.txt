@@ -18,8 +18,9 @@ TABLE OF CONTENTS
 DASHBOARD
 ---------
   - View total tickets, total branches, and active branches at a glance.
-  - Use Department Buckets (IT / Branch Admin / Manager) to see open ticket
-    counts per department. Click a bucket to filter tickets by that department.
+  - Use Department Buckets (dynamic list of branch roles configured by admin)
+    to see open ticket counts per department. Click a bucket to filter
+    tickets by that department.
   - View Status Distribution chart showing tickets broken down by status.
   - View Stationary Budget chart showing spending per branch.
   - View Branch Performance chart showing ticket volume per branch.
@@ -30,7 +31,7 @@ DASHBOARD
 TICKETS
 -------
   - View all tickets from every branch.
-  - Use Department Bucket tabs (All / IT / Branch Admin / Manager) with live
+  - Use Department Bucket tabs (All + every configured branch role) with live
     open-ticket counts and red pulse indicators for new tickets.
   - Search tickets by ticket number, subject, or keyword.
   - Filter by Status, Branch, Department, or Date Range.
@@ -38,9 +39,12 @@ TICKETS
   - Click any ticket to open its detail page.
 
   Ticket Detail Page:
-    - Change ticket status using the Status dropdown.
-    - Reply to the conversation with text messages and image attachments
-      (images auto-compress to fit size limits).
+    - Change ticket status using the Status dropdown. The last status change
+      date/time is shown next to the status.
+    - Reply to the conversation with rich-text messages (bold, italic,
+      underline, strikethrough, highlight, text color, lists, quotes, code,
+      links; press Ctrl+Enter to send) and image attachments (images
+      auto-compress to fit size limits).
     - View the Conversation tab for a full email-thread-style view with
       author info, timestamps, and attachment previews.
     - View the Timeline History tab for a complete audit trail of every
@@ -52,14 +56,14 @@ TICKETS
 
 
 BRANCH USERS
--------------
+------------
   - View stats: Total Users, Active, Inactive.
   - Search users by name, branch, or email.
   - Filter by status: All, Active, Inactive.
   - View the user table with Name, Email, Branch, Role (color-coded badge),
     Status, and Actions.
   - Add a new branch user via the Add Branch User button. Fill in Branch,
-    Contact Person, Role (IT / Branch Admin / Manager), Email, Mobile,
+    Contact Person, Role (select any configured branch role), Email, Mobile,
     Address, Username, and Password.
   - Edit user details (branch, contact person, email, mobile, address, role).
   - Reset a user's password (new password generated and shown with copy button).
@@ -98,14 +102,27 @@ SETTINGS
     - Connect Google account for email notifications.
 
   Ticket Form:
-    - Switch between role tabs: IT, Branch Admin, Manager.
+    - Switch between role tabs (one tab per configured branch role).
     - Toggle Ticket Portal on or off per role (controls whether that role
       can create tickets).
     - Build custom fields per role: add text, textarea, dropdown, radio,
       or checkbox fields. Set labels, required flags, placeholders, and
-      options. Reorder or remove fields.
+      options. Reorder or remove fields. The first text field's value is
+      used as the ticket subject when a ticket is created.
     - Toggle File Attachments on or off per role.
     - See a live preview of the form as the role would see it.
+
+  Branch Roles:
+    - View all configured branch roles with name, color swatch, sort order,
+      and active toggle.
+    - Add a new role (name + color picker).
+    - Edit a role's name or color. Renaming updates every branch user,
+      ticket, and form config that uses the old name automatically.
+    - Deactivate a role to hide it from new tickets/forms without deleting it.
+    - Delete a role (blocked while any user, ticket, or form config still
+      references it).
+    - Role colors appear everywhere the role badge is shown (sidebar, ticket
+      lists, user management, etc.). Unknown roles fall back to gray.
 
   Branches:
     - View all branches in a selectable list showing name, code, and
@@ -159,7 +176,7 @@ SETTINGS
     Portal Settings Tab:
       - Toggle the Stationary Portal on or off.
       - Set the order window: Open datetime and Close datetime.
-      - Select allowed roles: IT, Branch Admin, Manager.
+      - Select allowed roles (checkboxes for every configured branch role).
       - Save settings.
 
     Orders Tab:
@@ -206,15 +223,17 @@ MY TICKETS
 
 
 CREATE TICKET
--------------
-  - Enter a Subject (minimum 5 characters).
+------------
+  - There is no separate Subject field. The ticket subject is derived
+    automatically from the first custom field answer you enter.
   - Fill in Custom Fields as configured by your admin (text inputs, text
-    areas, dropdowns, radio buttons, or checkboxes). Required fields are
+    areas, dropdowns, radio buttons, or checkbox fields). Required fields are
     marked.
   - Enter a Description (minimum 20 characters, character counter shown).
   - Attach images (max 2MB each, auto-compressed). File attachments can be
     enabled or disabled by your admin.
-  - Review your entries in the Ticket Preview sidebar.
+  - Review your entries in the Ticket Preview sidebar. The first custom
+    field is marked "(used as ticket subject)".
   - Click Submit Ticket to create. A duplicate prevention check runs
     automatically.
   - Click Cancel to discard.
@@ -222,10 +241,11 @@ CREATE TICKET
 
 TICKET DETAIL
 -------------
-  - View your ticket details: Status, Branch, Role, Created By, Created Date,
-    Updated Date.
+  - View your ticket details: Status (with last change time), Branch, Role,
+    Created By, Created Date, Updated Date.
   - View custom fields and description.
-  - Reply to the conversation with text messages and image attachments.
+  - Reply to the conversation with rich-text messages (formatting toolbar,
+    Ctrl+Enter to send) and image attachments.
   - View the Conversation tab for a full thread with author info, timestamps,
     and attachment previews.
   - View the Timeline History tab for the complete action trail.

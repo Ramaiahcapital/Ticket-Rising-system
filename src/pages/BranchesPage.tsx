@@ -1,9 +1,11 @@
 import { useState } from "react";
 import { trpc } from "@/providers/trpc";
+import { useBranchRoles } from "@/hooks/useBranchRoles";
 import { Plus, Pencil, Trash2, X, Loader2, Save, Users, Building2 } from "lucide-react";
 
 export default function BranchesPage() {
   const utils = trpc.useUtils();
+  const { getColor } = useBranchRoles();
   const { data, isLoading } = trpc.branch.list.useQuery({ page: 1, limit: 100 });
   const createBranch = trpc.branch.create.useMutation({ onSuccess: () => { utils.branch.list.invalidate(); utils.branch.listAll.invalidate(); close(); } });
   const updateBranch = trpc.branch.update.useMutation({ onSuccess: () => { utils.branch.list.invalidate(); utils.branch.listAll.invalidate(); close(); } });
@@ -79,7 +81,7 @@ export default function BranchesPage() {
                     <p className="text-sm text-gray-800">{u.contactPerson} <span className="text-gray-400 text-xs">({u.username})</span></p>
                     <p className="text-xs text-gray-500">{u.email}</p>
                   </div>
-                  {u.branchRole && <span className="px-2 py-0.5 rounded-full bg-red-50 text-red-700 text-xs font-medium">{u.branchRole}</span>}
+                  {u.branchRole && <span className="px-2 py-0.5 rounded-full text-xs font-medium" style={{ backgroundColor: `${getColor(u.branchRole)}1A`, color: getColor(u.branchRole) }}>{u.branchRole}</span>}
                 </div>
               ))}
             </div>

@@ -1,8 +1,10 @@
 import type {
   AuditLogRow,
+  BranchRoleRow,
   BranchRow,
   ClusterRow,
   EmailTemplateRow,
+  GoogleAuthRow,
   NotificationRow,
   Profile,
   StationaryItemRow,
@@ -51,6 +53,8 @@ export type Database = {
       stationary_orders: Table<StationaryOrderRow>;
       stationary_order_items: Table<StationaryOrderItemRow>;
       ticket_form_config: Table<TicketFormConfigRow>;
+      branch_roles: Table<BranchRoleRow>;
+      google_auth: Table<GoogleAuthRow>;
     };
     Views: { [_ in never]: never };
     Functions: { [_ in never]: never };

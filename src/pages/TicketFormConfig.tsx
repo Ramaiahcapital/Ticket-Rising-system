@@ -1,7 +1,7 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { trpc } from "@/providers/trpc";
+import { useBranchRoles } from "@/hooks/useBranchRoles";
 import { Plus, Trash2, GripVertical, X, Save, FileText, Type, List, CheckSquare, AlignLeft } from "lucide-react";
-import { BRANCH_ROLES } from "@contracts/constants";
 
 type Field = {
   id: string;
@@ -23,7 +23,8 @@ const FIELD_TYPES: { value: Field["type"]; label: string; icon: React.ComponentT
 
 export default function TicketFormConfig() {
   const utils = trpc.useUtils();
-  const [activeRole, setActiveRole] = useState<string>(BRANCH_ROLES[0]);
+  const { activeRoles } = useBranchRoles();
+  const [activeRole, setActiveRole] = useState<string>("");
   const { data: configs, isLoading } = trpc.ticket.getFormConfig.useQuery();
   const { data: portalEnabledMap } = trpc.ticket.getPortalEnabled.useQuery();
   const upsertConfig = trpc.ticket.upsertFormConfig.useMutation({
@@ -38,6 +39,14 @@ export default function TicketFormConfig() {
   const [fields, setFields] = useState<Field[]>([]);
   const [filesEnabled, setFilesEnabled] = useState(true);
   const [synced, setSynced] = useState<Record<string, boolean>>({});
+
+  // Select the first active role once roles load
+  useEffect(() => {
+    if (activeRoles.length > 0 && (!activeRole || !activeRoles.some((r) => r.name === activeRole))) {
+      setActiveRole(activeRoles[0].name);
+      setSynced((prev) => ({ ...prev, [activeRoles[0].name]: false }));
+    }
+  }, [activeRoles, activeRole]);
 
   // Sync from server when role changes
   if (currentConfig && !synced[activeRole]) {
@@ -139,20 +148,20 @@ export default function TicketFormConfig() {
 
       {/* Role Tabs */}
       <div className="flex gap-2 border-b border-gray-200 pb-2">
-        {BRANCH_ROLES.map((role) => (
+        {activeRoles.map((role) => (
           <button
-            key={role}
+            key={role.id}
             onClick={() => {
-              setActiveRole(role);
-              setSynced((prev) => ({ ...prev, [role]: false }));
+              setActiveRole(role.name);
+              setSynced((prev) => ({ ...prev, [role.name]: false }));
             }}
             className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-              activeRole === role
+              activeRole === role.name
                 ? "bg-red-600 text-white"
                 : "bg-gray-100 text-gray-600 hover:bg-gray-200"
             }`}
           >
-            {role}
+            {role.name}
           </button>
         ))}
       </div>
@@ -329,13 +338,9 @@ export default function TicketFormConfig() {
           <div className="bg-white rounded-xl border border-gray-200 p-4">
             <h3 className="font-semibold text-gray-800 mb-4">Preview — {activeRole} Ticket Form</h3>
             <div className="space-y-4 border border-gray-200 rounded-lg p-4 bg-gray-50">
-              {/* Fixed: Subject */}
-              <div>
-                <label className="block text-xs font-medium text-gray-700 mb-1">
-                  Subject <span className="text-red-500">*</span>
-                </label>
-                <input disabled placeholder="Enter ticket subject" className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white" />
-              </div>
+              <p className="text-[10px] text-gray-400">
+                The answer to the first field below is used as the ticket subject.
+              </p>
 
               {/* Custom Fields */}
               {fields.map((field) => (

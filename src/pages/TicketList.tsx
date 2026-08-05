@@ -2,6 +2,7 @@ import { useState, useCallback } from "react";
 import { useNavigate } from "react-router";
 import { trpc } from "@/providers/trpc";
 import { useAuth } from "@/hooks/useAuth";
+import { useBranchRoles } from "@/hooks/useBranchRoles";
 import {
   Plus, Search, Filter, Eye, Ticket, Download, Loader2,
 } from "lucide-react";
@@ -10,11 +11,12 @@ import * as XLSX from "xlsx";
 export default function TicketList() {
   const navigate = useNavigate();
   const { isAdmin } = useAuth();
+  const { activeRoles, getColor } = useBranchRoles();
   const [displayLimit, setDisplayLimit] = useState(10);
   const [search, setSearch] = useState("");
   const [statusId, setStatusId] = useState<string | undefined>();
   const [branchId, setBranchId] = useState<string | undefined>();
-  const [branchRole, setBranchRole] = useState<"IT" | "Branch Admin" | "Manager" | undefined>();
+  const [branchRole, setBranchRole] = useState<string | undefined>();
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
   const [showFilters, setShowFilters] = useState(false);
@@ -84,13 +86,12 @@ export default function TicketList() {
   );
 
   const getBranchRoleBadge = (role: string) => {
-    const colors: Record<string, string> = {
-      "IT": "bg-blue-100 text-blue-700",
-      "Branch Admin": "bg-purple-100 text-purple-700",
-      "Manager": "bg-amber-100 text-amber-700",
-    };
+    const color = getColor(role);
     return (
-      <span className={`px-2 py-0.5 rounded text-xs font-medium ${colors[role] || "bg-gray-100 text-gray-600"}`}>
+      <span
+        className="px-2 py-0.5 rounded text-xs font-medium"
+        style={{ backgroundColor: `${color}1A`, color }}
+      >
         {role}
       </span>
     );
@@ -109,7 +110,7 @@ export default function TicketList() {
   const handleBucketClick = (bucket: string) => {
     setActiveBucket(bucket);
     if (bucket === "all") setBranchRole(undefined);
-    else setBranchRole(bucket as "IT" | "Branch Admin" | "Manager");
+    else setBranchRole(bucket);
     setDisplayLimit(10);
   };
 
@@ -231,13 +232,13 @@ export default function TicketList() {
             </select>
             <select
               value={branchRole || ""}
-              onChange={(e) => { setBranchRole((e.target.value || undefined) as "IT" | "Branch Admin" | "Manager" | undefined); setDisplayLimit(10); }}
+              onChange={(e) => { setBranchRole(e.target.value || undefined); setDisplayLimit(10); }}
               className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:border-red-500"
             >
               <option value="">All Departments</option>
-              <option value="IT">IT</option>
-              <option value="Branch Admin">Branch Admin</option>
-              <option value="Manager">Manager</option>
+              {activeRoles.map(r => (
+                <option key={r.id} value={r.name}>{r.name}</option>
+              ))}
             </select>
             <input
               type="date"

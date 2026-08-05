@@ -1,8 +1,28 @@
 export type Role = "admin" | "branch" | "cluster";
 
-export type BranchRole = "IT" | "Branch Admin" | "Manager";
+/** Dynamic branch role name (managed via the branch_roles table). */
+export type BranchRole = string;
 
-export const BRANCH_ROLES: BranchRole[] = ["IT", "Branch Admin", "Manager"];
+export type BranchRoleRow = {
+  id: string;
+  name: string;
+  color: string;
+  sortOrder: number;
+  isActive: boolean;
+  createdAt: string | null;
+  updatedAt: string | null;
+};
+
+export type GoogleAuthRow = {
+  id: string;
+  userId: string;
+  accessToken: string;
+  refreshToken: string;
+  tokenExpiry: string;
+  googleEmail: string;
+  createdAt: string;
+  updatedAt: string;
+};
 
 export type Profile = {
   id: string;
@@ -106,7 +126,7 @@ export type TicketTimelineRow = {
   ticketId: string;
   action: string;
   actorId: string;
-  actorType: "admin" | "branch";
+  actorType: Role;
   actorName: string;
   previousValue: string | null;
   newValue: string | null;
@@ -121,7 +141,7 @@ export type TicketCommentRow = {
   content: string;
   contentHtml: string | null;
   authorId: string;
-  authorType: "admin" | "branch";
+  authorType: Role;
   authorName: string;
   isInternal: boolean;
   parentId: string | null;
@@ -145,7 +165,7 @@ export type TicketAttachmentRow = {
 export type NotificationRow = {
   id: string;
   recipientId: string;
-  recipientType: "admin" | "branch";
+  recipientType: Role;
   title: string;
   message: string;
   type: string;
@@ -222,7 +242,7 @@ export type StationaryPortalSettingsRow = {
   /** Portal closes at this timestamp (branches can order until here). */
   windowCloseAt: string | null;
   /** Branch roles allowed to access the portal (json array of BranchRole). */
-  allowedRoles: string | null;
+  allowedRoles: string[] | null;
   updatedAt: string | null;
   updatedBy: string | null;
 };
@@ -336,7 +356,7 @@ export type TicketFormField = {
 /** Ticket form configuration per role. */
 export type TicketFormConfigRow = {
   id: string;
-  role: "IT" | "Branch Admin" | "Manager";
+  role: string;
   fields: TicketFormField[];
   filesEnabled: boolean;
   createdAt: string;
