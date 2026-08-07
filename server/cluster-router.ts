@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { createRouter, adminQuery, authedQuery, clusterQuery } from "./middleware.js";
 import { getSupabaseAdmin } from "./lib/supabase.js";
-import { createAuditLog } from "./lib/utils.js";
+import { createAuditLog, notifyAllAdmins, notifyBranchUsers } from "./lib/utils.js";
 import type { ClusterRow, Profile } from "./lib/db-types.js";
 import { env } from "./lib/env.js";
 import { sendEmailFromUserResult } from "./email-service.js";
@@ -518,6 +518,14 @@ export const clusterRouter = createRouter({
             }
           }
         }
+
+        // In-app notifications: admins + branch
+        try {
+          const branchLabelN = branch?.name || "Branch";
+          const clusterLabelN = cluster?.name || "Cluster";
+          await notifyAllAdmins({ title: "Stationary Order Approved", message: `Stationary order from ${branchLabelN} was approved by ${clusterLabelN}.`, type: "stationary_order_approved" });
+          if (order?.branchId) await notifyBranchUsers(order.branchId, "Stationary Order Approved", `Your stationary order has been approved by ${clusterLabelN}.`, "stationary_order_approved");
+        } catch { /* notification failures should not break the mutation */ }
       } catch (e) { emailStatus.errors.push(String(e)); }
 
       await createAuditLog({

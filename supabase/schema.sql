@@ -188,7 +188,7 @@ create table if not exists public.ticket_attachments (
 create table if not exists public.notifications (
   id uuid primary key default gen_random_uuid(),
   "recipientId" uuid not null,
-  "recipientType" text not null check ("recipientType" in ('admin', 'branch')),
+  "recipientType" text not null check ("recipientType" in ('admin', 'branch', 'cluster')),
   title text not null,
   message text not null,
   type text not null,

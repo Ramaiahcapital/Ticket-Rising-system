@@ -95,7 +95,7 @@ export async function createTimelineEntry(params: {
 // Create notification
 export async function createNotification(params: {
   recipientId: string;
-  recipientType: "admin" | "branch";
+  recipientType: Role;
   title: string;
   message: string;
   type: NotificationRow["type"];
@@ -136,6 +136,36 @@ export async function notifyAllAdmins(params: {
       ticketId: params.ticketId,
     });
   }
+}
+
+// Notify all cluster users belonging to a cluster
+export async function notifyClusterUsers(clusterId: string, title: string, message: string, type: NotificationRow["type"]) {
+  const supabase = getSupabaseAdmin();
+  if (!clusterId) return;
+  const { data: users } = await supabase
+    .from("profiles")
+    .select("id")
+    .eq("clusterId", clusterId)
+    .eq("role", "cluster");
+  if (!users?.length) return;
+  await supabase.from("notifications").insert(
+    (users as { id: string }[]).map((u) => ({ recipientId: u.id, recipientType: "cluster", title, message, type }))
+  );
+}
+
+// Notify all branch users linked to a branch
+export async function notifyBranchUsers(branchId: string, title: string, message: string, type: NotificationRow["type"]) {
+  const supabase = getSupabaseAdmin();
+  if (!branchId) return;
+  const { data: users } = await supabase
+    .from("profiles")
+    .select("id")
+    .eq("branchId", branchId)
+    .eq("role", "branch");
+  if (!users?.length) return;
+  await supabase.from("notifications").insert(
+    (users as { id: string }[]).map((u) => ({ recipientId: u.id, recipientType: "branch", title, message, type }))
+  );
 }
 
 // Get client IP from request

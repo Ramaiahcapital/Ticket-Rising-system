@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { createRouter, adminQuery, authedQuery } from "./middleware.js";
 import { getSupabaseAdmin } from "./lib/supabase.js";
-import { createAuditLog, requireRoleExists } from "./lib/utils.js";
+import { createAuditLog, notifyAllAdmins, notifyBranchUsers, notifyClusterUsers, requireRoleExists } from "./lib/utils.js";
 import type { BranchRole } from "./lib/db-types.js";
 import { sendEmailFromUserResult } from "./email-service.js";
 
@@ -101,6 +101,22 @@ async function resubmitForClusterApproval(
           else { emailStatus.failed++; emailStatus.errors.push(`${cu.email}: ${res.reason}`); }
         }
       }
+    }
+
+    // In-app notification to the cluster
+    if (clusterUsers?.length) {
+      try {
+        const branchLabel = sender?.branchName || "Branch";
+        await supabase.from("notifications").insert(
+          (clusterUsers as { id: string }[]).map((u) => ({
+            recipientId: u.id,
+            recipientType: "cluster",
+            title: "Stationary Order Updated",
+            message: `Order from ${branchLabel} was updated. Please review and approve it again.`,
+            type: "stationary_order_updated",
+          }))
+        );
+      } catch { /* notification failures should not break the mutation */ }
     }
   } catch (e) { emailStatus.errors.push(String(e)); }
 
@@ -478,6 +494,18 @@ export const stationaryRouter = createRouter({
         }
       } catch (e) { emailStatus.errors.push(String(e)); }
 
+      // In-app notifications: admins + cluster
+      const { data: branchInfo } = await supabase
+        .from("branches")
+        .select("name, code")
+        .eq("id", branchId)
+        .maybeSingle();
+      const branchLabelN = branchInfo?.name || "Branch";
+      const branchCodeN = branchInfo?.code || "";
+      const notifMessage = `New stationary order placed by ${branchLabelN}${branchCodeN ? ` (${branchCodeN})` : ""} on ${input.orderDate || new Date().toISOString().slice(0, 10)}.`;
+      if (clusterId) await notifyClusterUsers(clusterId, "New Stationary Order", `${notifMessage} Please review and approve.`, "stationary_order_created");
+      await notifyAllAdmins({ title: "New Stationary Order", message: notifMessage, type: "stationary_order_created" });
+
       await createAuditLog({ userId: ctx.user.id, userType: "branch", userName: ctx.user.name, action: "place_stationary_order", entityType: "stationaryOrder", entityId: orderId, details: { emailStatus } });
 
       return { id: orderId };
@@ -605,6 +633,15 @@ export const stationaryRouter = createRouter({
           }
         }
       } catch (e) { emailStatus.errors.push(String(e)); }
+
+      // In-app notifications: admins + cluster
+      try {
+        const sender = await supabase.from("profiles").select("branchName").eq("id", ctx.user.id).maybeSingle();
+        const branchLabelN = (sender.data as { branchName?: string } | null)?.branchName || "Branch";
+        const notifMessage = `Order from ${branchLabelN} (order date ${orderDateLabel}) was marked as received.`;
+        if (order.clusterId) await notifyClusterUsers(order.clusterId, "Stationary Order Received", notifMessage, "stationary_order_received");
+        await notifyAllAdmins({ title: "Stationary Order Received", message: notifMessage, type: "stationary_order_received" });
+      } catch { /* notification failures should not break the mutation */ }
 
       await createAuditLog({ userId: ctx.user.id, userType: "branch", userName: ctx.user.name, action: "receive_stationary_order", entityType: "stationaryOrder", entityId: input.orderId, details: { emailStatus } });
       return { success: true, emailStatus };
@@ -789,7 +826,7 @@ export const stationaryRouter = createRouter({
 
       const { data: order, error: oErr } = await supabase
         .from("stationary_orders")
-        .select("id, branchId, status")
+        .select("id, branchId, clusterId, status")
         .eq("id", input.orderId)
         .single();
       if (oErr || !order) throw new Error("Order not found");
@@ -798,6 +835,17 @@ export const stationaryRouter = createRouter({
 
       const { error } = await supabase.from("stationary_orders").update({ status: "cancelled" }).eq("id", input.orderId);
       if (error) throw new Error(error.message);
+
+      // In-app notifications: admins + cluster
+      try {
+        const branchInfo = await supabase.from("branches").select("name, code").eq("id", branchId).maybeSingle();
+        const branchLabelN = branchInfo.data?.name || "Branch";
+        const branchCodeN = branchInfo.data?.code || "";
+        const notifMessage = `Stationary order from ${branchLabelN}${branchCodeN ? ` (${branchCodeN})` : ""} was cancelled by the branch.`;
+        if (order.clusterId) await notifyClusterUsers(order.clusterId, "Stationary Order Cancelled", notifMessage, "stationary_order_cancelled");
+        await notifyAllAdmins({ title: "Stationary Order Cancelled", message: notifMessage, type: "stationary_order_cancelled" });
+      } catch { /* notification failures should not break the mutation */ }
+
       await createAuditLog({ userId: ctx.user.id, userType: "branch", userName: ctx.user.name, action: "cancel_stationary_order", entityType: "stationaryOrder", entityId: input.orderId });
       return { success: true };
     }),
@@ -1105,8 +1153,27 @@ export const stationaryRouter = createRouter({
     .input(z.object({ orderId: z.string(), status: z.enum(["pending", "approved", "dispatched"]) }))
     .mutation(async ({ ctx, input }) => {
       const supabase = getSupabaseAdmin();
+      const { data: order } = await supabase
+        .from("stationary_orders")
+        .select("id, branchId, clusterId")
+        .eq("id", input.orderId)
+        .maybeSingle();
+      if (!order) throw new Error("Order not found");
       const { error } = await supabase.from("stationary_orders").update({ status: input.status }).eq("id", input.orderId);
       if (error) throw new Error(error.message);
+
+      // In-app notifications
+      try {
+        const branchInfo = await supabase.from("branches").select("name").eq("id", order.branchId).maybeSingle();
+        const branchLabelN = branchInfo.data?.name || "Branch";
+        if (input.status === "approved") {
+          await notifyBranchUsers(order.branchId, "Stationary Order Approved", `Your stationary order has been approved by the admin and is being processed.`, "stationary_order_approved");
+        } else if (input.status === "dispatched") {
+          await notifyBranchUsers(order.branchId, "Stationary Order Dispatched", `Your stationary order has been dispatched. Please mark it as received when it arrives.`, "stationary_order_dispatched");
+          if (order.clusterId) await notifyClusterUsers(order.clusterId, "Stationary Order Dispatched", `Order from ${branchLabelN} has been dispatched by the admin.`, "stationary_order_dispatched");
+        }
+      } catch { /* notification failures should not break the mutation */ }
+
       await createAuditLog({ userId: ctx.user.id, userType: "admin", action: "set_stationary_order_status", entityType: "stationaryOrder", entityId: input.orderId, details: { status: input.status } });
       return { success: true };
     }),
