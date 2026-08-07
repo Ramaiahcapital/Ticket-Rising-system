@@ -34,13 +34,26 @@ export default function StationaryPortal() {
     },
     onError: (e) => alert(e.message),
   });
-  const updateQty = trpc.stationary.updateMyOrderItemQty.useMutation({ onSuccess: () => utils.stationary.myOrders.invalidate() });
-  const deleteItem = trpc.stationary.deleteMyOrderItem.useMutation({ onSuccess: () => utils.stationary.myOrders.invalidate(), onError: (e) => alert(e.message) });
+  const updateQty = trpc.stationary.updateMyOrderItemQty.useMutation({
+    onSuccess: (res) => {
+      utils.stationary.myOrders.invalidate();
+      if ((res as any)?.emailStatus?.failed > 0) alert("Order updated. The cluster was emailed for re-approval, but some notification emails failed to send.");
+    },
+    onError: (e) => alert(e.message),
+  });
+  const deleteItem = trpc.stationary.deleteMyOrderItem.useMutation({
+    onSuccess: (res) => {
+      utils.stationary.myOrders.invalidate();
+      if ((res as any)?.emailStatus?.failed > 0) alert("Item removed. The cluster was emailed for re-approval, but some notification emails failed to send.");
+    },
+    onError: (e) => alert(e.message),
+  });
   const cancelOrder = trpc.stationary.cancelOrder.useMutation({ onSuccess: () => utils.stationary.myOrders.invalidate(), onError: (e) => alert(e.message) });
   const addItem = trpc.stationary.addMyOrderItem.useMutation({
-    onSuccess: () => {
+    onSuccess: (res) => {
       utils.stationary.myOrders.invalidate();
       utils.stationary.getOrderableItems.invalidate();
+      if ((res as any)?.emailStatus?.failed > 0) alert("Item added. The cluster was emailed for re-approval, but some notification emails failed to send.");
     },
     onError: (e) => alert(e.message),
   });

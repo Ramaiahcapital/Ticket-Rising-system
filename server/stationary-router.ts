@@ -36,6 +36,87 @@ function getActingBranchId(ctx: { user: { role: string; branchId?: string | null
   return id;
 }
 
+/**
+ * When a branch modifies an order that was already cluster-approved, reset the
+ * approval so the cluster must review it again, and email the cluster.
+ * Returns the email status ({ sent, failed, errors }).
+ */
+async function resubmitForClusterApproval(
+  supabase: ReturnType<typeof getSupabaseAdmin>,
+  ctx: { user: { id: string; name?: string | null } },
+  orderId: string,
+  clusterId: string | null
+) {
+  const { error: rErr } = await supabase
+    .from("stationary_orders")
+    .update({ clusterApprovedAt: null, clusterApprovedBy: null })
+    .eq("id", orderId);
+  if (rErr) throw new Error(rErr.message);
+
+  const emailStatus = { sent: 0, failed: 0, errors: [] as string[] };
+  try {
+    const [{ data: clusterUsers }, { data: sender }, { data: clusterInfo }, { data: lines }] = await Promise.all([
+      clusterId
+        ? supabase.from("profiles").select("id, email").eq("clusterId", clusterId).eq("role", "cluster").eq("isActive", true)
+        : Promise.resolve({ data: [] }),
+      supabase.from("profiles").select("branchName, email").eq("id", ctx.user.id).maybeSingle(),
+      clusterId
+        ? supabase.from("clusters").select("name").eq("id", clusterId).maybeSingle()
+        : Promise.resolve({ data: null }),
+      supabase.from("stationary_order_items").select("quantity, unitPrice, lineTotal, stationary_items(name, unit)").eq("orderId", orderId),
+    ]) as any;
+
+    if (clusterUsers?.length && sender?.email) {
+      const branchLabel = sender.branchName || "Branch";
+      const clusterLabel = clusterInfo?.name || "Cluster";
+      const itemList = (lines ?? []).map((li: any) =>
+        `<tr><td style="padding:6px 8px;border-bottom:1px solid #eee;">${li.stationary_items?.name || "Item"}</td><td style="padding:6px 8px;border-bottom:1px solid #eee;text-align:center;">${li.quantity}</td><td style="padding:6px 8px;border-bottom:1px solid #eee;text-align:right;">₹${Number(li.lineTotal ?? 0)}</td></tr>`
+      ).join("");
+      const grandTotal = (lines ?? []).reduce((s: number, li: any) => s + Number(li.lineTotal ?? 0), 0);
+
+      for (const cu of clusterUsers) {
+        if (cu.email) {
+          const res = await sendEmailFromUserResult(
+            ctx.user.id,
+            cu.email,
+            `Stationary Order Updated — Re-approval Required`,
+            `<div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;">
+              <h2 style="color:#DC2626;">Order Updated — Re-approval Required</h2>
+              <table style="width:100%;border-collapse:collapse;">
+                <tr><td style="padding:8px;font-weight:bold;border-bottom:1px solid #eee;">Branch</td><td style="padding:8px;border-bottom:1px solid #eee;">${branchLabel}</td></tr>
+                <tr><td style="padding:8px;font-weight:bold;border-bottom:1px solid #eee;">Cluster</td><td style="padding:8px;border-bottom:1px solid #eee;">${clusterLabel}</td></tr>
+                <tr><td style="padding:8px;font-weight:bold;border-bottom:1px solid #eee;">Updated By</td><td style="padding:8px;border-bottom:1px solid #eee;">${ctx.user.name || branchLabel}</td></tr>
+                <tr><td style="padding:8px;font-weight:bold;border-bottom:1px solid #eee;">Updated At</td><td style="padding:8px;border-bottom:1px solid #eee;">${new Date().toLocaleString()}</td></tr>
+              </table>
+              <h3 style="margin-top:16px;">Updated Items</h3>
+              <table style="width:100%;border-collapse:collapse;border:1px solid #eee;">
+                <thead><tr style="background:#f9fafb;"><th style="padding:6px 8px;text-align:left;border-bottom:2px solid #ddd;">Item</th><th style="padding:6px 8px;text-align:center;border-bottom:2px solid #ddd;">Qty</th><th style="padding:6px 8px;text-align:right;border-bottom:2px solid #ddd;">Amount</th></tr></thead>
+                <tbody>${itemList}</tbody>
+              </table>
+              <p style="margin-top:12px;font-weight:bold;">Grand Total: ₹${grandTotal}</p>
+              <p style="margin-top:16px;color:#666;">A branch modified this order after it was approved. Please review and approve it again in the Ramaiah Capital Stationary Portal.</p>
+            </div>`
+          );
+          if (res.ok) emailStatus.sent++;
+          else { emailStatus.failed++; emailStatus.errors.push(`${cu.email}: ${res.reason}`); }
+        }
+      }
+    }
+  } catch (e) { emailStatus.errors.push(String(e)); }
+
+  await createAuditLog({
+    userId: ctx.user.id,
+    userType: "branch",
+    userName: ctx.user.name ?? undefined,
+    action: "resubmit_cluster_approval",
+    entityType: "stationaryOrder",
+    entityId: orderId,
+    details: { emailStatus },
+  });
+
+  return emailStatus;
+}
+
 export const stationaryRouter = createRouter({
   // ---------------- Admin: items ----------------
   listItems: adminQuery
@@ -546,7 +627,7 @@ export const stationaryRouter = createRouter({
 
       const { data: order } = await supabase
         .from("stationary_orders")
-        .select("branchId, status")
+        .select("branchId, status, clusterId, clusterApprovedAt")
         .eq("id", li.orderId)
         .single();
       if (!order) throw new Error("Order not found");
@@ -580,8 +661,14 @@ export const stationaryRouter = createRouter({
         .update({ quantity: input.quantity })
         .eq("id", input.orderItemId);
       if (updErr) throw new Error(updErr.message);
+
+      let emailStatus: { sent: number; failed: number; errors: string[] } | undefined;
+      if (order.clusterApprovedAt) {
+        emailStatus = await resubmitForClusterApproval(supabase, ctx, li.orderId, order.clusterId);
+      }
+
       await createAuditLog({ userId: ctx.user.id, userType: "branch", userName: ctx.user.name, action: "edit_stationary_order_qty", entityType: "stationaryOrder", entityId: li.orderId, details: { orderItemId: input.orderItemId, quantity: input.quantity } });
-      return { success: true };
+      return { success: true, emailStatus };
     }),
 
   // ---------------- Branch: delete an item from a pending order ----------------
@@ -601,7 +688,7 @@ export const stationaryRouter = createRouter({
 
       const { data: order } = await supabase
         .from("stationary_orders")
-        .select("branchId, status")
+        .select("branchId, status, clusterId, clusterApprovedAt")
         .eq("id", li.orderId)
         .single();
       if (!order) throw new Error("Order not found");
@@ -619,6 +706,12 @@ export const stationaryRouter = createRouter({
         .delete()
         .eq("id", input.orderItemId);
       if (delErr) throw new Error(delErr.message);
+
+      let emailStatus: { sent: number; failed: number; errors: string[] } | undefined;
+      if (order.clusterApprovedAt) {
+        emailStatus = await resubmitForClusterApproval(supabase, ctx, li.orderId, order.clusterId);
+      }
+
       await createAuditLog({
         userId: ctx.user.id,
         userType: "branch",
@@ -628,7 +721,7 @@ export const stationaryRouter = createRouter({
         entityId: li.orderId,
         details: { orderItemId: input.orderItemId, itemName: item?.name ?? null, quantity: li.quantity },
       });
-      return { success: true };
+      return { success: true, emailStatus };
     }),
 
   // ---------------- Branch: add an item to a pending order ----------------
@@ -641,7 +734,7 @@ export const stationaryRouter = createRouter({
 
       const { data: order, error: oErr } = await supabase
         .from("stationary_orders")
-        .select("id, branchId, status")
+        .select("id, branchId, status, clusterId, clusterApprovedAt")
         .eq("id", input.orderId)
         .single();
       if (oErr || !order) throw new Error("Order not found");
@@ -674,6 +767,11 @@ export const stationaryRouter = createRouter({
         .insert({ orderId: input.orderId, itemId: input.itemId, quantity: input.quantity, unitPrice, lineTotal: unitPrice * input.quantity });
       if (insErr) throw new Error(insErr.message);
 
+      let emailStatus: { sent: number; failed: number; errors: string[] } | undefined;
+      if (order.clusterApprovedAt) {
+        emailStatus = await resubmitForClusterApproval(supabase, ctx, input.orderId, order.clusterId);
+      }
+
       await createAuditLog({
         userId: ctx.user.id,
         userType: "branch",
@@ -683,7 +781,7 @@ export const stationaryRouter = createRouter({
         entityId: input.orderId,
         details: { itemId: input.itemId, itemName: item.name, quantity: input.quantity },
       });
-      return { success: true };
+      return { success: true, emailStatus };
     }),
 
   // ---------------- Branch: cancel their own pending order ----------------
