@@ -25,6 +25,7 @@ export default function TicketDetail() {
   const [commentHtml, setCommentHtml] = useState("");
   const [commentFiles, setCommentFiles] = useState<File[]>([]);
   const [commentUploading, setCommentUploading] = useState(false);
+  const [replyOpen, setReplyOpen] = useState(false);
   const [statusChanging, setStatusChanging] = useState(false);
   const [activeTab, setActiveTab] = useState<"conversation" | "timeline">("conversation");
   const [statusDropdown, setStatusDropdown] = useState(false);
@@ -159,6 +160,7 @@ export default function TicketDetail() {
       setComment("");
       setCommentHtml("");
       setCommentFiles([]);
+      setReplyOpen(false);
     } finally {
       setCommentUploading(false);
     }
@@ -249,8 +251,22 @@ export default function TicketDetail() {
             </div>
           </div>
 
-          {isAdmin && (
-            <div className="relative">
+          <div className="flex items-center gap-2 flex-wrap">
+            <button
+              onClick={() => setReplyOpen((o) => !o)}
+              disabled={!liveChatEnabled}
+              className={`flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-lg transition-colors disabled:opacity-50 ${
+                replyOpen
+                  ? "bg-gray-100 text-gray-700 border border-gray-300"
+                  : "bg-red-600 hover:bg-red-700 text-white"
+              }`}
+            >
+              <Send className="w-4 h-4" />
+              {replyOpen ? "Close Reply" : "Reply"}
+            </button>
+
+            {isAdmin && (
+              <div className="relative">
               <button
                 onClick={() => setStatusDropdown(!statusDropdown)}
                 disabled={statusChanging}
@@ -284,6 +300,7 @@ export default function TicketDetail() {
           )}
         </div>
       </div>
+    </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         {/* Main Content */}
@@ -345,7 +362,7 @@ export default function TicketDetail() {
                     <div className="space-y-0">
                       {comments?.length === 0 && (
                       <div className="text-center py-8 text-gray-400 text-sm">
-                        No replies yet. Send the first reply below.
+                        No replies yet. Press the "Reply" button to respond.
                       </div>
                     )}
                     {comments?.map((c) => {
@@ -396,32 +413,14 @@ export default function TicketDetail() {
                     </div>
                   </div>
 
-                  {/* Input */}
-                  {!liveChatEnabled ? (
-                    <div className="relative pt-3 border-t border-gray-100 flex-shrink-0">
-                      <div className="blur-[4px] pointer-events-none">
-                        <div className="flex gap-2">
-                          <textarea
-                            placeholder="Type your reply..."
-                            rows={2}
-                            className="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm resize-none"
-                            disabled
-                          />
-                          <button disabled className="px-4 py-2 bg-red-600 text-white rounded-lg opacity-30 self-end">
-                            <Send className="w-4 h-4" />
-                          </button>
-                        </div>
-                      </div>
-                      <div className="absolute inset-0 flex items-center justify-center">
-                        <span className="bg-white/90 px-3 py-1.5 rounded-full text-sm font-medium text-gray-600 shadow-sm border border-gray-200">
-                          Live chat is currently off
-                        </span>
-                      </div>
-                    </div>
-                  ) : (
+                  {/* Input — only appears after pressing the Reply button */}
+                  {replyOpen && (
                     <div className="border border-gray-200 rounded-lg overflow-hidden flex-shrink-0">
-                      <div className="bg-gray-50 px-4 py-2 border-b border-gray-200">
+                      <div className="bg-gray-50 px-4 py-2 border-b border-gray-200 flex items-center justify-between">
                         <p className="text-xs text-gray-500 font-medium">Reply</p>
+                        <button onClick={() => setReplyOpen(false)} className="p-1 text-gray-400 hover:text-gray-600 hover:bg-gray-200 rounded transition-colors">
+                          <X className="w-3.5 h-3.5" />
+                        </button>
                       </div>
                       <div className="p-3">
                         <RichTextEditor
@@ -469,7 +468,11 @@ export default function TicketDetail() {
                                       if (f.size > 2 * 1024 * 1024) return false;
                                       return true;
                                     });
-                                    setCommentFiles(prev => [...prev, ...valid]);
+                                    setCommentFiles(prev => {
+                                      const combined = [...prev, ...valid];
+                                      if (combined.length > 5) alert("Maximum 5 images per comment");
+                                      return combined.slice(0, 5);
+                                    });
                                   }}
                                   className="hidden"
                                   id="comment-files"

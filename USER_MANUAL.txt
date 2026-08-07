@@ -60,12 +60,11 @@ BRANCH USERS
   - View stats: Total Users, Active, Inactive.
   - Search users by name, branch, or email.
   - Filter by status: All, Active, Inactive.
-  - View the user table with Name, Email, Branch, Role (color-coded badge),
-    Status, and Actions.
+  - View the user table with Name, Email, Branch, Status, and Actions.
   - Add a new branch user via the Add Branch User button. Fill in Branch,
-    Contact Person, Role (select any configured branch role), Email, Mobile,
-    Address, Username, and Password.
-  - Edit user details (branch, contact person, email, mobile, address, role).
+    Contact Person, Email, Mobile, Address, Username, and Password. Only ONE
+    login is needed per branch - no separate credentials per role.
+  - Edit user details (branch, contact person, email, mobile, address).
   - Reset a user's password (new password generated and shown with copy button).
   - Activate or deactivate a user account.
   - Delete a user (with confirmation).
@@ -176,7 +175,8 @@ SETTINGS
     Portal Settings Tab:
       - Toggle the Stationary Portal on or off.
       - Set the order window: Open datetime and Close datetime.
-      - Select allowed roles (checkboxes for every configured branch role).
+      - All branch accounts can access the portal while it is enabled and
+        within the order window (roles are chosen per ticket, not per login).
       - Save settings.
 
     Orders Tab:
@@ -224,6 +224,10 @@ MY TICKETS
 
 CREATE TICKET
 ------------
+  - Select Your Role from the dropdown (one of the configured branch roles).
+    The selected role determines which department bucket the ticket lands in
+    on the admin side and which form fields are shown. It defaults to your
+    saved role (if any) or the first role in the list.
   - There is no separate Subject field. The ticket subject is derived
     automatically from the first custom field answer you enter.
   - Fill in Custom Fields as configured by your admin (text inputs, text

@@ -1,19 +1,31 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { useLocation } from "react-router";
 import { useAuth } from "@/hooks/useAuth";
 import Sidebar from "./Sidebar";
 import Header from "./Header";
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [desktopCollapsed, setDesktopCollapsed] = useState(false);
   const { user } = useAuth();
   const isAdmin = user?.type === "admin";
+  const location = useLocation();
+
+  // Auto-collapse the desktop menu when viewing a ticket detail so the
+  // conversation gets the full width; the hamburger is used to reopen it.
+  useEffect(() => {
+    const isTicketDetail = /^\/tickets\/[^/]+$/.test(location.pathname);
+    if (isTicketDetail) setDesktopCollapsed(true);
+  }, [location.pathname]);
 
   return (
     <div className="h-screen bg-gray-50 flex overflow-hidden">
       {/* Desktop Sidebar */}
-      <div className="hidden lg:block h-screen sticky top-0 flex-shrink-0">
-        <Sidebar isAdmin={isAdmin} mobile={false} onClose={() => {}} />
-      </div>
+      {!desktopCollapsed && (
+        <div className="hidden lg:block h-screen sticky top-0 flex-shrink-0">
+          <Sidebar isAdmin={isAdmin} mobile={false} onClose={() => {}} />
+        </div>
+      )}
 
       {/* Mobile Sidebar Drawer */}
       {sidebarOpen && (
@@ -30,7 +42,11 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
 
       {/* Main Content */}
       <div className="flex-1 flex flex-col min-w-0 h-screen overflow-hidden">
-        <Header onMenuClick={() => setSidebarOpen(true)} />
+        <Header
+          onMenuClick={() => setSidebarOpen(true)}
+          onDesktopToggle={() => setDesktopCollapsed((c) => !c)}
+          sidebarCollapsed={desktopCollapsed}
+        />
         <main className="flex-1 p-4 lg:p-6 overflow-auto">
           <div className="max-w-7xl mx-auto">
             {children}

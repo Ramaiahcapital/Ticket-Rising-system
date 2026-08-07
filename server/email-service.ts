@@ -69,6 +69,16 @@ export async function sendEmailFromUser(
   subject: string,
   htmlBody: string
 ): Promise<boolean> {
+  const res = await sendEmailFromUserResult(userId, to, subject, htmlBody);
+  return res.ok;
+}
+
+export async function sendEmailFromUserResult(
+  userId: string,
+  to: string,
+  subject: string,
+  htmlBody: string
+): Promise<{ ok: boolean; reason?: string }> {
   try {
     const accessToken = await refreshIfNeeded(userId);
     const supabase = getSupabaseAdmin();
@@ -78,7 +88,7 @@ export async function sendEmailFromUser(
       .eq("userId", userId)
       .maybeSingle();
 
-    if (!auth) return false;
+    if (!auth) return { ok: false, reason: "Google account not connected" };
 
     const fromEmail = auth.googleEmail;
     const RFC2822Message = [
@@ -105,10 +115,10 @@ export async function sendEmailFromUser(
       requestBody: { raw: encodedMessage },
     });
 
-    return true;
+    return { ok: true };
   } catch (err) {
     console.error("Failed to send email:", err);
-    return false;
+    return { ok: false, reason: err instanceof Error ? err.message : String(err) };
   }
 }
 

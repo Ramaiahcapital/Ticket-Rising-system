@@ -121,9 +121,6 @@ export default function Sidebar({ isAdmin, mobile, onClose }: SidebarProps) {
             <button onClick={() => go("/tickets")} className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all ${location.pathname === "/tickets" ? "bg-red-50 text-red-600 border-l-[3px] border-red-600" : "text-gray-600 hover:bg-gray-50 hover:text-gray-900"}`}>
               <Ticket className={`w-5 h-5 ${location.pathname === "/tickets" ? "text-red-600" : "text-gray-400"}`} /> Tickets
             </button>
-            <button onClick={() => go("/users")} className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all ${location.pathname === "/users" ? "bg-red-50 text-red-600 border-l-[3px] border-red-600" : "text-gray-600 hover:bg-gray-50 hover:text-gray-900"}`}>
-              <Users className={`w-5 h-5 ${location.pathname === "/users" ? "text-red-600" : "text-gray-400"}`} /> Branch Users
-            </button>
             <button onClick={() => go("/audit-log")} className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all ${location.pathname === "/audit-log" ? "bg-red-50 text-red-600 border-l-[3px] border-red-600" : "text-gray-600 hover:bg-gray-50 hover:text-gray-900"}`}>
               <ClipboardList className={`w-5 h-5 ${location.pathname === "/audit-log" ? "text-red-600" : "text-gray-400"}`} /> Audit Log
             </button>
@@ -217,7 +214,7 @@ export default function Sidebar({ isAdmin, mobile, onClose }: SidebarProps) {
                 <span
                   className="px-1.5 py-0.5 rounded text-[10px] font-semibold"
                   style={{ backgroundColor: `${getColor(user.branchRole)}1A`, color: getColor(user.branchRole) }}
-                >{user.branchRole || "User"}</span>
+                >{user.branchRole || "Branch User"}</span>
                 <span className="text-[10px] text-gray-400 truncate">{user.branchName}</span>
               </div>
             </>

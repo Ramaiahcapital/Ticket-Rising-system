@@ -104,6 +104,22 @@
   background: #ef4444;
 }
 
+/* Row/delete animations */
+@keyframes row-remove {
+  0% { opacity: 1; transform: translateX(0); }
+  100% { opacity: 0; transform: translateX(24px); }
+}
+.row-removing {
+  animation: row-remove 0.3s ease forwards;
+}
+@keyframes fade-in-up {
+  0% { opacity: 0; transform: translateY(8px); }
+  100% { opacity: 1; transform: translateY(0); }
+}
+.fade-in-up {
+  animation: fade-in-up 0.3s ease both;
+}
+
 /* Rich text editor */
 .rich-editor p {
   margin: 0.25rem 0;

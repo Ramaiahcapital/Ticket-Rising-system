@@ -3,18 +3,11 @@ import { trpc } from "@/providers/trpc";
 import {
   Ticket, Users, CheckCircle,
   UserPlus, FileBarChart,
-  Monitor, Shield, Briefcase,
 } from "lucide-react";
 import {
   PieChart, Pie, Cell, ResponsiveContainer, Tooltip,
   BarChart, Bar, XAxis, YAxis, CartesianGrid,
 } from "recharts";
-
-const deptIcons: Record<string, any> = {
-  IT: Monitor,
-  "Branch Admin": Shield,
-  Manager: Briefcase,
-};
 
 export default function AdminDashboard() {
   const navigate = useNavigate();
@@ -52,11 +45,11 @@ export default function AdminDashboard() {
         </div>
         <div className="flex gap-2">
           <button
-            onClick={() => navigate("/users")}
+            onClick={() => navigate("/branches")}
             className="flex items-center gap-2 px-4 py-2 bg-white border border-gray-300 hover:bg-gray-50 text-gray-700 text-sm font-medium rounded-lg transition-colors"
           >
             <UserPlus className="w-4 h-4" />
-            Manage Users
+            Branches & Users
           </button>
           <button
             onClick={() => navigate("/reports")}
@@ -91,7 +84,6 @@ export default function AdminDashboard() {
       {/* Department Buckets */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         {departmentCounts.map((dept) => {
-          const Icon = deptIcons[dept.name] || Ticket;
           return (
             <button
               key={dept.name}
@@ -100,7 +92,7 @@ export default function AdminDashboard() {
             >
               <div className="flex items-center gap-3 mb-3">
                 <div className="w-10 h-10 rounded-lg flex items-center justify-center" style={{ backgroundColor: `${dept.color}15` }}>
-                  <Icon className="w-5 h-5" style={{ color: dept.color }} />
+                  <Ticket className="w-5 h-5" style={{ color: dept.color }} />
                 </div>
                 <div>
                   <p className="text-lg font-bold text-gray-800">{dept.count}</p>

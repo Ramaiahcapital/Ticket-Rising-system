@@ -136,7 +136,8 @@ create table if not exists public.tickets (
   "createdAt" timestamptz not null default now(),
   "updatedAt" timestamptz not null default now(),
   "solvedAt" timestamptz,
-  "closedAt" timestamptz
+  "closedAt" timestamptz,
+  "statusChangedAt" timestamptz
 );
 
 -- ─── Ticket Timeline ────────────────────────────────────────────

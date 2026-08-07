@@ -1,9 +1,10 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate } from "react-router";
 import { trpc } from "@/providers/trpc";
 import { useAuth } from "@/hooks/useAuth";
+import { useBranchRoles } from "@/hooks/useBranchRoles";
 import { supabase } from "@/lib/supabase";
-import { ArrowLeft, Send, Loader2, ImageIcon, XCircle } from "lucide-react";
+import { ArrowLeft, Send, Loader2, ImageIcon, XCircle, Users } from "lucide-react";
 
 type FieldDef = {
   id: string;
@@ -13,11 +14,23 @@ type FieldDef = {
   options?: string[];
   placeholder?: string;
   sortOrder: number;
+  dependsOn?: { fieldId: string; value: string };
 };
+
+/** Fields are visible unless their parent select/radio answer doesn't match. */
+function getVisibleFields(fields: FieldDef[], values: Record<string, unknown>): FieldDef[] {
+  return fields.filter((f) => {
+    if (!f.dependsOn) return true;
+    return values[f.dependsOn.fieldId] === f.dependsOn.value;
+  });
+}
 
 export default function CreateTicket() {
   const navigate = useNavigate();
   const { user } = useAuth();
+  const { activeRoles, getColor } = useBranchRoles();
+  const [selectedRole, setSelectedRole] = useState("");
+  const [subject, setSubject] = useState("");
   const [description, setDescription] = useState("");
   const [customValues, setCustomValues] = useState<Record<string, unknown>>({});
   const [files, setFiles] = useState<File[]>([]);
@@ -25,9 +38,21 @@ export default function CreateTicket() {
   const [isUploading, setIsUploading] = useState(false);
 
   const utils = trpc.useUtils();
+
+  // Default the role picker to the user's saved role, else the first active role
+  useEffect(() => {
+    if (activeRoles.length === 0) return;
+    setSelectedRole((prev) => {
+      if (prev && activeRoles.some((r) => r.name === prev)) return prev;
+      const saved = (user as any)?.branchRole as string | undefined;
+      if (saved && activeRoles.some((r) => r.name === saved)) return saved;
+      return activeRoles[0].name;
+    });
+  }, [activeRoles, user]);
+
   const { data: formConfig } = trpc.ticket.getFormConfig.useQuery(
-    { role: (user as any)?.branchRole ?? undefined },
-    { enabled: (user as any)?.type === "branch" }
+    { role: selectedRole || undefined },
+    { enabled: (user as any)?.type === "branch" && !!selectedRole }
   );
   const { data: portalEnabledMap } = trpc.ticket.getPortalEnabled.useQuery(
     undefined,
@@ -35,18 +60,35 @@ export default function CreateTicket() {
   );
 
   const formConfigData = Array.isArray(formConfig) ? formConfig[0] : formConfig;
-  const portalEnabled = portalEnabledMap?.[(user as any)?.branchRole as string] ?? true;
-  const fields: FieldDef[] = formConfigData?.fields ?? [];
+  const portalEnabled = selectedRole ? (portalEnabledMap?.[selectedRole] ?? true) : false;
+  const allFields: FieldDef[] = formConfigData?.fields ?? [];
   const filesEnabled = formConfigData?.filesEnabled ?? true;
 
-  // Subject is derived from the first custom field configured by the admin
-  const subject = (() => {
-    const first = fields[0];
-    if (!first) return "";
-    const v = customValues[first.id];
-    if (v === undefined || v === null) return "";
-    return Array.isArray(v) ? v.join(", ").trim() : String(v).trim();
-  })();
+  // Only fields whose condition is satisfied are shown
+  const fields = getVisibleFields(allFields, customValues);
+
+  // Clear answers to now-hidden fields whenever a parent answer changes
+  const setCustomValue = (id: string, value: unknown) => {
+    const next = { ...customValues, [id]: value };
+    const visible = new Set(getVisibleFields(allFields, next).map((f) => f.id));
+    const pruned: Record<string, unknown> = {};
+    for (const k of Object.keys(next)) {
+      if (visible.has(k)) pruned[k] = next[k];
+    }
+    setCustomValues(pruned);
+    setErrors((prev) => {
+      const nextErrors = { ...prev };
+      for (const k of Object.keys(nextErrors)) {
+        if (k.startsWith("custom_") && !visible.has(k.replace("custom_", ""))) {
+          delete nextErrors[k];
+        }
+      }
+      return nextErrors;
+    });
+  };
+
+  // Subject character limit (applied to the form input and server validation)
+  const SUBJECT_MAX = 50;
 
   // Compress image to ≤ 1MB using Canvas API
   async function compressImage(file: File, maxBytes = 1_000_000): Promise<Blob> {
@@ -126,15 +168,10 @@ export default function CreateTicket() {
 
   const validate = () => {
     const newErrors: Record<string, string> = {};
+    const trimmedSubject = subject.trim();
+    if (!trimmedSubject) newErrors.subject = "Subject is required";
+    else if (trimmedSubject.length > SUBJECT_MAX) newErrors.subject = `Subject must be ${SUBJECT_MAX} characters or less`;
     if (description.length < 20) newErrors.description = "Description must be at least 20 characters";
-    if (!subject) {
-      const first = fields[0];
-      if (first) {
-        newErrors[`custom_${first.id}`] = `${first.label} is required (used as the ticket subject)`;
-      } else {
-        newErrors.form = "Add at least one custom field to create a ticket (the first field is used as the subject)";
-      }
-    }
     for (const f of fields) {
       if (!f.required) continue;
       const v = customValues[f.id];
@@ -151,12 +188,20 @@ export default function CreateTicket() {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    if (!selectedRole) { setErrors({ form: "Select your role" }); return; }
     if (!validate() || createTicket.isPending) return;
     createTicket.mutate({
       subject,
       description,
+      branchRole: selectedRole,
       customFields: customValues,
     });
+  };
+
+  const handleRoleChange = (role: string) => {
+    setSelectedRole(role);
+    setCustomValues({});
+    setErrors({});
   };
 
   const renderCustomField = (f: FieldDef) => {
@@ -164,14 +209,14 @@ export default function CreateTicket() {
     const err = errors[`custom_${f.id}`];
     const common = `w-full px-3 py-2.5 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-red-500/20 focus:border-red-500 transition-colors ${err ? "border-red-300" : "border-gray-300"}`;
     if (f.type === "text") {
-      return <input className={common} value={(value as string) ?? ""} onChange={(e) => setCustomValues({ ...customValues, [f.id]: e.target.value })} placeholder={f.placeholder} />;
+      return <input className={common} value={(value as string) ?? ""} onChange={(e) => setCustomValue(f.id, e.target.value)} placeholder={f.placeholder} />;
     }
     if (f.type === "textarea") {
-      return <textarea rows={3} className={common} value={(value as string) ?? ""} onChange={(e) => setCustomValues({ ...customValues, [f.id]: e.target.value })} placeholder={f.placeholder} />;
+      return <textarea rows={3} className={common} value={(value as string) ?? ""} onChange={(e) => setCustomValue(f.id, e.target.value)} placeholder={f.placeholder} />;
     }
     if (f.type === "select") {
       return (
-        <select className={common} value={(value as string) ?? ""} onChange={(e) => setCustomValues({ ...customValues, [f.id]: e.target.value })}>
+        <select className={common} value={(value as string) ?? ""} onChange={(e) => setCustomValue(f.id, e.target.value)}>
           <option value="">Select…</option>
           {(f.options ?? []).map((o, i) => <option key={i} value={o}>{o}</option>)}
         </select>
@@ -182,7 +227,7 @@ export default function CreateTicket() {
         <div className="flex flex-wrap gap-3 pt-1">
           {(f.options ?? []).map((o, i) => (
             <label key={i} className="flex items-center gap-1.5 text-sm text-gray-700 cursor-pointer">
-              <input type="radio" name={f.id} checked={value === o} onChange={() => setCustomValues({ ...customValues, [f.id]: o })} className="text-red-600" />
+              <input type="radio" name={f.id} checked={value === o} onChange={() => setCustomValue(f.id, o)} className="text-red-600" />
               {o}
             </label>
           ))}
@@ -200,7 +245,7 @@ export default function CreateTicket() {
                 checked={arr.includes(o)}
                 onChange={(e) => {
                   const next = e.target.checked ? [...arr, o] : arr.filter((x) => x !== o);
-                  setCustomValues({ ...customValues, [f.id]: next });
+                  setCustomValue(f.id, next);
                 }}
                 className="text-red-600 rounded"
               />
@@ -234,26 +279,81 @@ export default function CreateTicket() {
         </div>
       )}
 
-      {!portalEnabled && (
-        <div className="flex flex-col items-center justify-center py-16 text-center bg-white rounded-xl border border-gray-200">
-          <XCircle className="w-10 h-10 text-gray-300" />
-          <h2 className="mt-3 text-lg font-semibold text-gray-700">Ticket portal is disabled</h2>
-          <p className="text-sm text-gray-500 mt-1 max-w-sm">The administrator has not enabled ticket creation for your role yet.</p>
+      {/* Role selection (decides the admin bucket + form fields) */}
+      {activeRoles.length > 0 && (
+        <div className="mb-4 bg-white rounded-xl border border-gray-200 p-4">
+          <label className="block text-sm font-medium text-gray-700 mb-1.5">
+            Select Your Role <span className="text-red-500">*</span>
+            <span className="ml-2 text-xs font-normal text-gray-400">Your ticket will be routed to this department</span>
+          </label>
+          <div className="relative">
+            <select
+              value={selectedRole}
+              onChange={(e) => handleRoleChange(e.target.value)}
+              className="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-red-500/20 focus:border-red-500 transition-colors appearance-none"
+            >
+              {activeRoles.map((r) => (
+                <option key={r.id} value={r.name}>{r.name}</option>
+              ))}
+            </select>
+            {selectedRole && (
+              <span className="absolute right-9 top-1/2 -translate-y-1/2 flex items-center gap-1.5 pointer-events-none">
+                <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: getColor(selectedRole) }} />
+              </span>
+            )}
+            <Users className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+          </div>
         </div>
       )}
 
-      {portalEnabled && <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      {!selectedRole && (
+        <div className="flex items-center justify-center py-16 bg-white rounded-xl border border-gray-200">
+          <Loader2 className="w-8 h-8 animate-spin text-red-600" />
+        </div>
+      )}
+
+      {selectedRole && !portalEnabled && (
+        <div className="flex flex-col items-center justify-center py-16 text-center bg-white rounded-xl border border-gray-200">
+          <XCircle className="w-10 h-10 text-gray-300" />
+          <h2 className="mt-3 text-lg font-semibold text-gray-700">Ticket portal is disabled</h2>
+          <p className="text-sm text-gray-500 mt-1 max-w-sm">The administrator has not enabled ticket creation for the selected role ({selectedRole || "none"}) yet. Choose another role above.</p>
+        </div>
+      )}
+
+      {selectedRole && portalEnabled && <div className="max-w-3xl">
         {/* Form */}
-        <form onSubmit={handleSubmit} className="lg:col-span-2 space-y-4">
+        <form onSubmit={handleSubmit} className="space-y-4">
           <div className="bg-white rounded-xl border border-gray-200 p-6 space-y-5">
-            {/* Custom Fields (configurable per role) — first field becomes the ticket subject */}
+            {/* Subject — fixed, always first, compulsory, with character limit */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                Subject <span className="text-red-500">*</span>
+              </label>
+              <input
+                type="text"
+                value={subject}
+                maxLength={SUBJECT_MAX}
+                onChange={(e) => setSubject(e.target.value)}
+                placeholder="Enter a short summary of the issue"
+                className={`w-full px-3 py-2.5 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-red-500/20 focus:border-red-500 transition-colors ${
+                  errors.subject ? "border-red-300" : "border-gray-300"
+                }`}
+              />
+              <div className="flex justify-between mt-1">
+                {errors.subject && <p className="text-xs text-red-600">{errors.subject}</p>}
+                <p className={`text-xs ml-auto ${subject.length >= SUBJECT_MAX ? "text-red-600" : "text-gray-400"}`}>
+                  {subject.length}/{SUBJECT_MAX}
+                </p>
+              </div>
+            </div>
+
+            {/* Custom Fields (configurable per role) */}
             {fields.length > 0 && (
               <div className="space-y-5 pt-1">
-                {fields.map((f, fi) => (
+                {fields.map((f) => (
                   <div key={f.id}>
                     <label className="block text-sm font-medium text-gray-700 mb-1.5">
                       {f.label} {f.required && <span className="text-red-500">*</span>}
-                      {fi === 0 && <span className="ml-2 text-[10px] font-normal text-gray-400">(used as ticket subject)</span>}
                     </label>
                     {renderCustomField(f)}
                     {errors[`custom_${f.id}`] && (
@@ -288,7 +388,7 @@ export default function CreateTicket() {
             {filesEnabled && (
               <div className="pt-1">
                 <label className="block text-sm font-medium text-gray-700 mb-1.5">
-                  Attachments <span className="text-xs text-gray-400 font-normal">(images, max 2MB each)</span>
+                  Attachments <span className="text-xs text-gray-400 font-normal">(up to 5 images, max 2MB each)</span>
                 </label>
                 <div className="border-2 border-dashed border-gray-300 rounded-lg p-4">
                   <input
@@ -302,15 +402,20 @@ export default function CreateTicket() {
                         if (f.size > 2 * 1024 * 1024) { setErrors(prev => ({ ...prev, files: `${f.name} exceeds 2MB limit` })); return false; }
                         return true;
                       });
-                      setFiles(valid);
-                      if (valid.length > 0) setErrors(prev => { const { files, ...rest } = prev; return rest; });
+                      if (valid.length > 5) {
+                        setErrors(prev => ({ ...prev, files: "Maximum 5 images allowed per ticket" }));
+                        setFiles(valid.slice(0, 5));
+                      } else {
+                        setFiles(valid);
+                        if (valid.length > 0) setErrors(prev => { const { files, ...rest } = prev; return rest; });
+                      }
                     }}
                     className="hidden"
                     id="ticket-files"
                   />
                   <label htmlFor="ticket-files" className="flex flex-col items-center gap-1 cursor-pointer text-gray-500 hover:text-red-600">
                     <ImageIcon className="w-5 h-5" />
-                    <span className="text-xs">Click to select images (will be compressed to ≤1MB)</span>
+                    <span className="text-xs">Click to select up to 5 images (compressed to ≤1MB)</span>
                   </label>
                   {errors.files && <p className="text-xs text-red-600 mt-1 text-center">{errors.files}</p>}
                   {files.length > 0 && (
@@ -357,55 +462,6 @@ export default function CreateTicket() {
             </div>
           </div>
         </form>
-
-        {/* Preview / Tips */}
-        <div className="space-y-4">
-          <div className="bg-white rounded-xl border border-gray-200 p-5">
-            <h3 className="font-semibold text-gray-800 mb-3">Ticket Preview</h3>
-            <div className="space-y-2 text-sm">
-              <div className="flex justify-between">
-                <span className="text-gray-500">Subject:</span>
-                <span className="text-gray-800 truncate max-w-[180px]">{subject || "-"}</span>
-              </div>
-              <p className="text-[10px] text-gray-400">Subject is auto-filled from the first custom field</p>
-              {fields.length > 0 && (
-                <div className="border-t border-gray-100 pt-2">
-                  <p className="text-xs text-gray-500 mb-1">Custom fields: {fields.length}</p>
-                  <ul className="space-y-1">
-                    {fields.map(f => (
-                      <li key={f.id} className="flex justify-between text-xs">
-                        <span className="text-gray-500">{f.label}:</span>
-                        <span className="text-gray-700">{customValues[f.id] ? String(customValues[f.id]).substring(0, 20) : <span className="text-gray-400">-</span>}</span>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              )}
-            </div>
-          </div>
-
-          <div className="bg-amber-50 rounded-xl border border-amber-200 p-5">
-            <h3 className="font-semibold text-amber-800 mb-2 text-sm">Tips for faster resolution</h3>
-            <ul className="space-y-1.5 text-xs text-amber-700">
-              <li className="flex items-start gap-2">
-                <span className="mt-0.5 w-1 h-1 rounded-full bg-amber-500 flex-shrink-0" />
-                Be specific about the issue
-              </li>
-              <li className="flex items-start gap-2">
-                <span className="mt-0.5 w-1 h-1 rounded-full bg-amber-500 flex-shrink-0" />
-                Include relevant account numbers
-              </li>
-              <li className="flex items-start gap-2">
-                <span className="mt-0.5 w-1 h-1 rounded-full bg-amber-500 flex-shrink-0" />
-                Attach screenshots if applicable
-              </li>
-              <li className="flex items-start gap-2">
-                <span className="mt-0.5 w-1 h-1 rounded-full bg-amber-500 flex-shrink-0" />
-                Mention any error messages
-              </li>
-            </ul>
-          </div>
-        </div>
       </div>
       }
     </div>

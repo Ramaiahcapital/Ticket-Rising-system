@@ -1,11 +1,18 @@
 import { useState } from "react";
 import { trpc } from "@/providers/trpc";
-import { useAuth } from "@/hooks/useAuth";
 import { Loader2, Package, ShoppingCart, CheckCircle2, XCircle, Clock, AlertTriangle } from "lucide-react";
+
+const STATUS_META: Record<string, { label: string; cls: string }> = {
+  pending: { label: "Pending", cls: "bg-amber-50 text-amber-700" },
+  approved: { label: "Approved", cls: "bg-blue-50 text-blue-700" },
+  dispatched: { label: "Dispatched", cls: "bg-indigo-50 text-indigo-700" },
+  received: { label: "Received", cls: "bg-green-50 text-green-700" },
+  fulfilled: { label: "Fulfilled", cls: "bg-green-50 text-green-700" },
+  cancelled: { label: "Cancelled", cls: "bg-red-50 text-red-700" },
+};
 
 export default function StationaryPortal() {
   const utils = trpc.useUtils();
-  const { user } = useAuth();
   const status = trpc.stationary.getPortalStatus.useQuery();
   const { data: items, isLoading } = trpc.stationary.getOrderableItems.useQuery(undefined, { enabled: !!status.data?.canOrder });
   const myOrders = trpc.stationary.myOrders.useQuery();
@@ -18,6 +25,10 @@ export default function StationaryPortal() {
       setPlaced(true);
     },
     onError: (e) => { setError(e.message); setShowConfirm(false); },
+  });
+  const markReceived = trpc.stationary.markReceived.useMutation({
+    onSuccess: () => utils.stationary.myOrders.invalidate(),
+    onError: (e) => alert(e.message),
   });
 
   const [cart, setCart] = useState<Record<string, number>>({});
@@ -46,9 +57,6 @@ export default function StationaryPortal() {
         ? `Ordering closed on ${new Date(s.windowCloseAt).toLocaleString()}.`
         : "Ordering is currently closed.";
     return <ClosedState icon={<Clock className="w-10 h-10 text-gray-300" />} title="Ordering window is closed" msg={msg} />;
-  }
-  if (!s.roleAllowed) {
-    return <ClosedState icon={<XCircle className="w-10 h-10 text-gray-300" />} title="Access denied" msg={`Your role (${(user as { branchRole?: string | null })?.branchRole ?? "none"}) is not permitted to order stationary. Allowed roles: ${s.allowedRoles.join(", ") || "none"}.`} />;
   }
 
   const setQty = (id: string, qty: number) => {
@@ -172,7 +180,20 @@ export default function StationaryPortal() {
               <div key={o.id} className="p-4">
                 <div className="flex justify-between items-center mb-1">
                   <p className="text-sm font-medium text-gray-800">Order on {o.orderDate || new Date(o.createdAt).toLocaleDateString()}</p>
-                  <span className={`text-xs px-2 py-0.5 rounded-full ${o.status === "fulfilled" ? "bg-green-50 text-green-700" : o.status === "cancelled" ? "bg-red-50 text-red-700" : "bg-amber-50 text-amber-700"}`}>{o.status}</span>
+                  <div className="flex items-center gap-2">
+                    {o.status === "dispatched" && (
+                      <button
+                        onClick={() => markReceived.mutate({ orderId: o.id })}
+                        disabled={markReceived.isPending}
+                        className="flex items-center gap-1 px-2.5 py-1 bg-green-600 text-white text-xs rounded-lg hover:bg-green-700 disabled:opacity-50"
+                      >
+                        {markReceived.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : <CheckCircle2 className="w-3 h-3" />} Received
+                      </button>
+                    )}
+                    <span className={`text-xs px-2 py-0.5 rounded-full ${STATUS_META[o.status]?.cls ?? "bg-gray-100 text-gray-600"}`}>
+                      {STATUS_META[o.status]?.label ?? o.status}
+                    </span>
+                  </div>
                 </div>
                 <p className="text-xs text-gray-500">{o.items.map((i: any) => `${i.name} x${i.quantity}`).join(", ")}</p>
               </div>

@@ -1,10 +1,10 @@
 import { z } from "zod";
-import { createRouter, adminQuery, authedQuery } from "./middleware.js";
+import { createRouter, adminQuery, authedQuery, clusterQuery } from "./middleware.js";
 import { getSupabaseAdmin } from "./lib/supabase.js";
 import { createAuditLog } from "./lib/utils.js";
 import type { ClusterRow, Profile } from "./lib/db-types.js";
 import { env } from "./lib/env.js";
-import { sendEmailFromUser } from "./email-service.js";
+import { sendEmailFromUserResult } from "./email-service.js";
 
 export const clusterRouter = createRouter({
   // ---------------- Admin: cluster CRUD ----------------
@@ -462,7 +462,7 @@ export const clusterRouter = createRouter({
     }),
 
   // ---------------- Cluster admin: approve order (sends to admin) ----------------
-  approveOrder: authedQuery
+  approveOrder: clusterQuery
     .input(z.object({ orderId: z.string() }))
     .mutation(async ({ ctx, input }) => {
       const supabase = getSupabaseAdmin();
@@ -473,9 +473,9 @@ export const clusterRouter = createRouter({
         .eq("id", input.orderId)
         .eq("clusterId", user.clusterId ?? "");
       if (error) throw new Error(error.message);
-      await createAuditLog({ userId: user.id, userType: "system", userName: user.name || "Cluster Admin", action: "approve_cluster_order", entityType: "stationaryOrder", entityId: input.orderId });
 
       // Send email from cluster to all admins
+      const emailStatus = { sent: 0, failed: 0, errors: [] as string[] };
       try {
         const { data: admins } = await supabase
           .from("profiles")
@@ -498,7 +498,7 @@ export const clusterRouter = createRouter({
           const branchLabel = branch?.name || "Branch";
           for (const admin of admins) {
             if (admin.email) {
-              await sendEmailFromUser(
+              const res = await sendEmailFromUserResult(
                 user.id,
                 admin.email,
                 `Stationary Order Approved by ${clusterLabel}`,
@@ -513,16 +513,28 @@ export const clusterRouter = createRouter({
                   <p style="margin-top:16px;color:#666;">The stationary order has been approved by the cluster and is ready for processing.</p>
                 </div>`
               );
+              if (res.ok) emailStatus.sent++;
+              else { emailStatus.failed++; emailStatus.errors.push(`${admin.email}: ${res.reason}`); }
             }
           }
         }
-      } catch (e) { console.error("Cluster approve email failed:", e); }
+      } catch (e) { emailStatus.errors.push(String(e)); }
+
+      await createAuditLog({
+        userId: user.id,
+        userType: "system",
+        userName: user.name || "Cluster Admin",
+        action: "approve_cluster_order",
+        entityType: "stationaryOrder",
+        entityId: input.orderId,
+        details: { emailStatus },
+      });
 
       return { success: true };
     }),
 
   // ---------------- Cluster admin: reject order ----------------
-  rejectOrder: authedQuery
+  rejectOrder: clusterQuery
     .input(z.object({ orderId: z.string() }))
     .mutation(async ({ ctx, input }) => {
       const supabase = getSupabaseAdmin();
@@ -533,8 +545,8 @@ export const clusterRouter = createRouter({
         .eq("id", input.orderId)
         .eq("clusterId", user.clusterId ?? "");
       if (error) throw new Error(error.message);
-      await createAuditLog({ userId: user.id, userType: "system", userName: user.name || "Cluster Admin", action: "reject_cluster_order", entityType: "stationaryOrder", entityId: input.orderId });
 
+      const emailStatus = { sent: 0, failed: 0, errors: [] as string[] };
       try {
         const { data: order } = await supabase
           .from("stationary_orders")
@@ -551,7 +563,7 @@ export const clusterRouter = createRouter({
             ? await supabase.from("clusters").select("name").eq("id", user.clusterId).maybeSingle()
             : { data: null };
           if (branchUser?.email) {
-            await sendEmailFromUser(
+            const res = await sendEmailFromUserResult(
               user.id,
               branchUser.email,
               `Order Rejected by ${clusterInfo?.name || "Cluster"}`,
@@ -565,15 +577,27 @@ export const clusterRouter = createRouter({
                 <p style="margin-top:16px;color:#666;">Your stationary order has been rejected. You can place a new order from the Stationary portal.</p>
               </div>`
             );
+            if (res.ok) emailStatus.sent++;
+            else { emailStatus.failed++; emailStatus.errors.push(`${branchUser.email}: ${res.reason}`); }
           }
         }
-      } catch (e) { console.error("Cluster reject email failed:", e); }
+      } catch (e) { emailStatus.errors.push(String(e)); }
+
+      await createAuditLog({
+        userId: user.id,
+        userType: "system",
+        userName: user.name || "Cluster Admin",
+        action: "reject_cluster_order",
+        entityType: "stationaryOrder",
+        entityId: input.orderId,
+        details: { emailStatus },
+      });
 
       return { success: true };
     }),
 
   // ---------------- Cluster admin: edit order item qty ----------------
-  updateOrderItemQty: authedQuery
+  updateOrderItemQty: clusterQuery
     .input(z.object({ orderItemId: z.string(), quantity: z.number().int().min(0) }))
     .mutation(async ({ ctx, input }) => {
       const supabase = getSupabaseAdmin();
@@ -590,10 +614,13 @@ export const clusterRouter = createRouter({
       // Fetch the order to get branchId
       const { data: order } = await supabase
         .from("stationary_orders")
-        .select("branchId")
+        .select("branchId, clusterId, status, clusterApprovedAt")
         .eq("id", li.orderId)
         .single();
       if (!order) throw new Error("Order not found");
+      if (order.clusterId !== user.clusterId) throw new Error("Order does not belong to your cluster");
+      if (order.clusterApprovedAt) throw new Error("Cannot modify an approved order");
+      if (order.status === "cancelled") throw new Error("Cannot modify a cancelled order");
 
       // Fetch the item's threshold
       const { data: item } = await supabase
@@ -627,7 +654,56 @@ export const clusterRouter = createRouter({
         .update({ quantity: input.quantity })
         .eq("id", input.orderItemId);
       if (updErr) throw new Error(updErr.message);
-      await createAuditLog({ userId: user.id, userType: "system", userName: user.name || "Cluster Admin", action: "edit_cluster_order_qty", entityType: "stationaryOrder", entityId: li.orderId, details: { orderItemId: input.orderItemId, quantity: input.quantity } });
+      await createAuditLog({ userId: user.id, userType: "system", userName: user.name || "Cluster Admin", action: "edit_cluster_order_qty", entityType: "stationaryOrder", entityId: li.orderId, details: { orderItemId: input.orderItemId, itemName: item?.name ?? null, quantity: input.quantity, previousQuantity: li.quantity } });
+      return { success: true };
+    }),
+
+  // ---------------- Cluster admin: delete order item ----------------
+  deleteOrderItem: clusterQuery
+    .input(z.object({ orderItemId: z.string() }))
+    .mutation(async ({ ctx, input }) => {
+      const supabase = getSupabaseAdmin();
+      const user = ctx.user as { type: string; clusterId?: string | null; id: string; name?: string | null };
+
+      // Fetch the line item with its order and item details
+      const { data: li, error: liErr } = await supabase
+        .from("stationary_order_items")
+        .select("orderId, itemId, quantity")
+        .eq("id", input.orderItemId)
+        .single();
+      if (liErr || !li) throw new Error("Order item not found");
+
+      const { data: order } = await supabase
+        .from("stationary_orders")
+        .select("clusterId, status, clusterApprovedAt")
+        .eq("id", li.orderId)
+        .single();
+      if (!order) throw new Error("Order not found");
+      if (order.clusterId !== user.clusterId) throw new Error("Order does not belong to your cluster");
+      if (order.clusterApprovedAt) throw new Error("Cannot modify an approved order");
+      if (order.status === "cancelled") throw new Error("Cannot modify a cancelled order");
+
+      const { data: item } = await supabase
+        .from("stationary_items")
+        .select("name")
+        .eq("id", li.itemId)
+        .single();
+
+      const { error: delErr } = await supabase
+        .from("stationary_order_items")
+        .delete()
+        .eq("id", input.orderItemId);
+      if (delErr) throw new Error(delErr.message);
+
+      await createAuditLog({
+        userId: user.id,
+        userType: "system",
+        userName: user.name || "Cluster Admin",
+        action: "delete_cluster_order_item",
+        entityType: "stationaryOrder",
+        entityId: li.orderId,
+        details: { orderItemId: input.orderItemId, itemName: item?.name ?? null, quantity: li.quantity },
+      });
       return { success: true };
     }),
 });

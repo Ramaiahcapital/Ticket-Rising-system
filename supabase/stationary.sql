@@ -38,7 +38,7 @@ create table if not exists public.stationary_orders (
   id uuid primary key default gen_random_uuid(),
   "branchId" uuid not null references public.profiles(id) on delete cascade,
   "createdBy" uuid not null references public.profiles(id) on delete cascade,
-  status text not null default 'pending' check (status in ('pending','fulfilled','cancelled')),
+  status text not null default 'pending' check (status in ('pending','approved','dispatched','received','fulfilled','cancelled')),
   "orderDate" date,
   "createdAt" timestamptz not null default now(),
   "updatedAt" timestamptz not null default now()

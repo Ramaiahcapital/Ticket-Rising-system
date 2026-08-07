@@ -11,7 +11,19 @@ type Field = {
   options?: string[];
   placeholder?: string;
   sortOrder: number;
+  dependsOn?: { fieldId: string; value: string };
 };
+
+/** Option-based field types can act as condition parents. */
+const CONDITION_TYPES = ["select", "radio"];
+
+/** Compute which fields are currently visible given the parent answers. */
+function getVisibleFields(fields: Field[], values: Record<string, unknown>): Field[] {
+  return fields.filter((f) => {
+    if (!f.dependsOn) return true;
+    return values[f.dependsOn.fieldId] === f.dependsOn.value;
+  });
+}
 
 const FIELD_TYPES: { value: Field["type"]; label: string; icon: React.ComponentType<{ className?: string }> }[] = [
   { value: "text", label: "Text Input", icon: Type },
@@ -34,26 +46,42 @@ export default function TicketFormConfig() {
     onSuccess: () => utils.ticket.getPortalEnabled.invalidate(),
   });
 
-  const currentConfig = configs?.find((c: any) => c.role === activeRole);
   const enabled = portalEnabledMap?.[activeRole] ?? true;
   const [fields, setFields] = useState<Field[]>([]);
   const [filesEnabled, setFilesEnabled] = useState(true);
-  const [synced, setSynced] = useState<Record<string, boolean>>({});
+  const [previewValues, setPreviewValues] = useState<Record<string, unknown>>({});
+
+  // Reset interactive preview when switching role
+  useEffect(() => {
+    setPreviewValues({});
+  }, [activeRole]);
+
+  const setPreviewValue = (fieldId: string, value: unknown) => {
+    const next = { ...previewValues, [fieldId]: value };
+    const visible = getVisibleFields(fields, next).map((f) => f.id);
+    const pruned: Record<string, unknown> = {};
+    for (const k of Object.keys(next)) {
+      if (visible.includes(k)) pruned[k] = next[k];
+    }
+    setPreviewValues(pruned);
+  };
+
+  const visiblePreviewFields = getVisibleFields(fields, previewValues);
 
   // Select the first active role once roles load
   useEffect(() => {
     if (activeRoles.length > 0 && (!activeRole || !activeRoles.some((r) => r.name === activeRole))) {
       setActiveRole(activeRoles[0].name);
-      setSynced((prev) => ({ ...prev, [activeRoles[0].name]: false }));
     }
   }, [activeRoles, activeRole]);
 
-  // Sync from server when role changes
-  if (currentConfig && !synced[activeRole]) {
-    setFields((currentConfig.fields as Field[]) ?? []);
-    setFilesEnabled(currentConfig.filesEnabled);
-    setSynced((prev) => ({ ...prev, [activeRole]: true }));
-  }
+  // Sync fields from the selected role's config whenever the role (or configs) changes.
+  // A role with no saved config gets an empty field list — never the previous role's fields.
+  useEffect(() => {
+    const cfg = configs?.find((c: any) => c.role === activeRole);
+    setFields((cfg?.fields as Field[]) ?? []);
+    setFilesEnabled(cfg?.filesEnabled ?? true);
+  }, [configs, activeRole]);
 
   const addField = () => {
     const newField: Field = {
@@ -69,8 +97,8 @@ export default function TicketFormConfig() {
   };
 
   const updateField = (id: string, updates: Partial<Field>) => {
-    setFields((prev) =>
-      prev.map((f) => {
+    setFields((prev) => {
+      const next = prev.map((f) => {
         if (f.id !== id) return f;
         const updated = { ...f, ...updates };
         // Reset options if type changes to text/textarea
@@ -78,12 +106,23 @@ export default function TicketFormConfig() {
           updated.options = [];
         }
         return updated;
-      })
-    );
+      });
+      // If a field loses option-based type, clear conditions that point to it
+      if (updates.type && !CONDITION_TYPES.includes(updates.type as string)) {
+        return next.map((f) =>
+          f.dependsOn?.fieldId === id ? { ...f, dependsOn: undefined } : f
+        );
+      }
+      return next;
+    });
   };
 
   const removeField = (id: string) => {
-    setFields((prev) => prev.filter((f) => f.id !== id));
+    setFields((prev) =>
+      prev.filter((f) => f.id !== id).map((f) =>
+        f.dependsOn?.fieldId === id ? { ...f, dependsOn: undefined } : f
+      )
+    );
   };
 
   const moveField = (id: string, direction: "up" | "down") => {
@@ -119,13 +158,33 @@ export default function TicketFormConfig() {
   };
 
   const removeOption = (fieldId: string, optIdx: number) => {
-    setFields((prev) =>
-      prev.map((f) => {
+    setFields((prev) => {
+      const removed = (prev.find((f) => f.id === fieldId)?.options ?? [])[optIdx];
+      const next = prev.map((f) => {
         if (f.id !== fieldId) return f;
         const opts = [...(f.options ?? [])];
         opts.splice(optIdx, 1);
         return { ...f, options: opts };
-      })
+      });
+      // Clear conditions that referenced the deleted option value
+      if (removed !== undefined) {
+        return next.map((f) =>
+          f.dependsOn?.fieldId === fieldId && f.dependsOn.value === removed
+            ? { ...f, dependsOn: undefined }
+            : f
+        );
+      }
+      return next;
+    });
+  };
+
+  const setCondition = (fieldId: string, parentId: string, value: string) => {
+    setFields((prev) =>
+      prev.map((f) =>
+        f.id === fieldId
+          ? { ...f, dependsOn: parentId ? { fieldId: parentId, value } : undefined }
+          : f
+      )
     );
   };
 
@@ -151,10 +210,7 @@ export default function TicketFormConfig() {
         {activeRoles.map((role) => (
           <button
             key={role.id}
-            onClick={() => {
-              setActiveRole(role.name);
-              setSynced((prev) => ({ ...prev, [role.name]: false }));
-            }}
+            onClick={() => setActiveRole(role.name)}
             className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
               activeRole === role.name
                 ? "bg-red-600 text-white"
@@ -203,7 +259,11 @@ export default function TicketFormConfig() {
                 </div>
               ) : (
                 <div className="space-y-3">
-                  {fields.map((field, idx) => (
+                  {fields.map((field, idx) => {
+                    const parentChoices = fields
+                      .slice(0, idx)
+                      .filter((p) => CONDITION_TYPES.includes(p.type) && (p.options?.length ?? 0) > 0);
+                    return (
                     <div key={field.id} className="border border-gray-200 rounded-lg p-3 bg-gray-50">
                       <div className="flex items-start gap-2">
                         <div className="flex flex-col gap-1 pt-1">
@@ -251,6 +311,13 @@ export default function TicketFormConfig() {
                               />
                               Required
                             </label>
+                            <button
+                              onClick={() => removeField(field.id)}
+                              title="Delete field"
+                              className="p-1.5 rounded-lg text-gray-400 hover:text-red-600 hover:bg-red-50 transition-colors"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
                           </div>
 
                           {["text", "textarea"].includes(field.type) && (
@@ -275,9 +342,10 @@ export default function TicketFormConfig() {
                                   />
                                   <button
                                     onClick={() => removeOption(field.id, optIdx)}
-                                    className="p-1 text-gray-400 hover:text-red-500"
+                                    title="Delete option"
+                                    className="w-6 h-6 flex items-center justify-center rounded-md text-gray-400 hover:text-red-600 hover:bg-red-50 transition-colors"
                                   >
-                                    <X className="w-3 h-3" />
+                                    <X className="w-3.5 h-3.5" />
                                   </button>
                                 </div>
                               ))}
@@ -289,17 +357,54 @@ export default function TicketFormConfig() {
                               </button>
                             </div>
                           )}
-                        </div>
 
-                        <button
-                          onClick={() => removeField(field.id)}
-                          className="p-1 text-gray-400 hover:text-red-500"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
+                          {/* Condition builder: show this field only when a previous select/radio answer matches */}
+                          {idx > 0 && (
+                            <div className="border-t border-dashed border-gray-200 pt-2 mt-2">
+                              <p className="text-[10px] text-gray-500 uppercase font-medium mb-1.5">
+                                Show when (optional — works with Dropdown / Radio answers)
+                              </p>
+                              <div className="flex items-center gap-1.5">
+                                <select
+                                  value={field.dependsOn?.fieldId ?? ""}
+                                  onChange={(e) => setCondition(field.id, e.target.value, "")}
+                                  className="flex-1 px-2 py-1 border border-gray-300 rounded text-xs bg-white focus:border-red-500 outline-none"
+                                >
+                                  <option value="">Always visible</option>
+                                  {parentChoices.map((p) => (
+                                    <option key={p.id} value={p.id}>
+                                      {p.label || "Untitled Field"}
+                                    </option>
+                                  ))}
+                                </select>
+                                {field.dependsOn?.fieldId && (
+                                  <>
+                                    <span className="text-[10px] text-gray-400 whitespace-nowrap">equals</span>
+                                    <select
+                                      value={field.dependsOn.value}
+                                      onChange={(e) => setCondition(field.id, field.dependsOn!.fieldId, e.target.value)}
+                                      className="flex-1 px-2 py-1 border border-gray-300 rounded text-xs bg-white focus:border-red-500 outline-none"
+                                    >
+                                      <option value="">Choose answer…</option>
+                                      {(fields.find((p) => p.id === field.dependsOn!.fieldId)?.options ?? []).map((o, oi) => (
+                                        <option key={oi} value={o}>
+                                          {o}
+                                        </option>
+                                      ))}
+                                    </select>
+                                  </>
+                                )}
+                              </div>
+                              <p className="text-[10px] text-gray-400 mt-1">
+                                Only Dropdown and Radio fields can trigger follow-up questions.
+                              </p>
+                            </div>
+                          )}
+                        </div>
                       </div>
                     </div>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
             </div>
@@ -339,27 +444,34 @@ export default function TicketFormConfig() {
             <h3 className="font-semibold text-gray-800 mb-4">Preview — {activeRole} Ticket Form</h3>
             <div className="space-y-4 border border-gray-200 rounded-lg p-4 bg-gray-50">
               <p className="text-[10px] text-gray-400">
-                The answer to the first field below is used as the ticket subject.
+                Interactive preview — answer Dropdown / Radio questions to test the flow.
               </p>
 
-              {/* Custom Fields */}
-              {fields.map((field) => (
+              {/* Custom Fields (conditional flow) */}
+              {visiblePreviewFields.map((field) => {
+                const value = previewValues[field.id];
+                return (
                 <div key={field.id}>
                   <label className="block text-xs font-medium text-gray-700 mb-1">
                     {field.label || "Untitled Field"}
                     {field.required && <span className="text-red-500 ml-1">*</span>}
                   </label>
+                  {field.dependsOn && (
+                    <p className="text-[10px] text-amber-600 mb-1">
+                      Shows when “{fields.find((p) => p.id === field.dependsOn!.fieldId)?.label || "previous"}” = “{field.dependsOn.value}”
+                    </p>
+                  )}
                   {field.type === "text" && (
-                    <input disabled placeholder={field.placeholder} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white" />
+                    <input value={(value as string) ?? ""} onChange={(e) => setPreviewValue(field.id, e.target.value)} placeholder={field.placeholder} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white" />
                   )}
                   {field.type === "textarea" && (
-                    <textarea disabled placeholder={field.placeholder} rows={3} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white" />
+                    <textarea value={(value as string) ?? ""} onChange={(e) => setPreviewValue(field.id, e.target.value)} placeholder={field.placeholder} rows={3} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white" />
                   )}
                   {field.type === "select" && (
-                    <select disabled className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white">
-                      <option>Select…</option>
+                    <select value={(value as string) ?? ""} onChange={(e) => setPreviewValue(field.id, e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white">
+                      <option value="">Select…</option>
                       {(field.options ?? []).map((opt, i) => (
-                        <option key={i}>{opt || `Option ${i + 1}`}</option>
+                        <option key={i} value={opt}>{opt || `Option ${i + 1}`}</option>
                       ))}
                     </select>
                   )}
@@ -367,7 +479,7 @@ export default function TicketFormConfig() {
                     <div className="flex flex-wrap gap-3">
                       {(field.options ?? []).map((opt, i) => (
                         <label key={i} className="flex items-center gap-1 text-sm text-gray-700">
-                          <input type="radio" disabled className="text-red-600" />
+                          <input type="radio" name={`preview_${field.id}`} checked={value === opt} onChange={() => setPreviewValue(field.id, opt)} className="text-red-600" />
                           {opt || `Option ${i + 1}`}
                         </label>
                       ))}
@@ -375,16 +487,20 @@ export default function TicketFormConfig() {
                   )}
                   {field.type === "checkbox" && (
                     <div className="flex flex-wrap gap-3">
-                      {(field.options ?? []).map((opt, i) => (
+                      {(field.options ?? []).map((opt, i) => {
+                        const arr = (value as string[]) ?? [];
+                        return (
                         <label key={i} className="flex items-center gap-1 text-sm text-gray-700">
-                          <input type="checkbox" disabled className="text-red-600 rounded" />
+                          <input type="checkbox" checked={arr.includes(opt)} onChange={(e) => setPreviewValue(field.id, e.target.checked ? [...arr, opt] : arr.filter((x) => x !== opt))} className="text-red-600 rounded" />
                           {opt || `Option ${i + 1}`}
                         </label>
-                      ))}
+                        );
+                      })}
                     </div>
                   )}
                 </div>
-              ))}
+                );
+              })}
 
               {/* Fixed: Description */}
               <div>

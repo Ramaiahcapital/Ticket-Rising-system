@@ -252,7 +252,7 @@ export type StationaryOrderRow = {
   id: string;
   branchId: string;
   createdBy: string;
-  status: "pending" | "fulfilled" | "cancelled";
+  status: "pending" | "approved" | "dispatched" | "received" | "fulfilled" | "cancelled";
   clusterId: string | null;
   clusterApprovedAt: string | null;
   clusterApprovedBy: string | null;
@@ -351,6 +351,9 @@ export type TicketFormField = {
   options?: string[];
   placeholder?: string;
   sortOrder: number;
+  /** Optional condition: this field only shows when the referenced
+   *  select/radio field's answer equals `value`. */
+  dependsOn?: { fieldId: string; value: string };
 };
 
 /** Ticket form configuration per role. */

@@ -2,7 +2,7 @@ import { z } from "zod";
 import { createRouter, adminQuery } from "./middleware.js";
 import { getSupabaseAdmin } from "./lib/supabase.js";
 import type { Profile } from "./lib/db-types.js";
-import { createAuditLog, requireRoleExists } from "./lib/utils.js";
+import { createAuditLog } from "./lib/utils.js";
 
 export const branchUserRouter = createRouter({
   list: adminQuery
@@ -97,7 +97,6 @@ export const branchUserRouter = createRouter({
     .input(
       z.object({
         branchId: z.string().min(1),
-        branchRole: z.string().min(1).max(100),
         contactPerson: z.string().min(1).max(255),
         email: z.string().email(),
         mobile: z.string().optional(),
@@ -118,8 +117,6 @@ export const branchUserRouter = createRouter({
       if (branchErr) throw new Error(branchErr.message);
       if (!branch) throw new Error("Selected branch not found");
 
-      await requireRoleExists(supabase, input.branchRole);
-
       // Check uniqueness
       const { data: existingUsername } = await supabase
         .from("profiles")
@@ -139,7 +136,6 @@ export const branchUserRouter = createRouter({
           branchCode: branch.code,
           branchId: branch.id,
           contactPerson: input.contactPerson,
-          branchRole: input.branchRole,
           name: input.contactPerson,
         },
       });
@@ -158,7 +154,6 @@ export const branchUserRouter = createRouter({
             branchCode: branch.code,
             branchId: branch.id,
             contactPerson: input.contactPerson,
-            branchRole: input.branchRole,
             mobile: input.mobile ?? null,
             address: input.address ?? null,
             isActive: input.isActive,
@@ -179,7 +174,7 @@ export const branchUserRouter = createRouter({
         action: "create_branch_user",
         entityType: "branchUser",
         entityId: data.id,
-        details: { branchName: branch.name, branchCode: branch.code, branchRole: input.branchRole },
+        details: { branchName: branch.name, branchCode: branch.code },
       });
 
       return {
@@ -198,7 +193,6 @@ export const branchUserRouter = createRouter({
       z.object({
         id: z.string(),
         branchId: z.string().optional(),
-        branchRole: z.string().min(1).max(100).optional(),
         contactPerson: z.string().min(1).max(255).optional(),
         email: z.string().email().optional(),
         mobile: z.string().optional(),
@@ -212,17 +206,20 @@ export const branchUserRouter = createRouter({
 
       if (Object.keys(updates).length === 0) throw new Error("No fields to update");
 
-      if (updates.branchRole !== undefined) {
-        await requireRoleExists(supabase, updates.branchRole);
-      }
-
       const set: Partial<Profile> = { updatedAt: new Date().toISOString() };
       if (updates.branchId !== undefined) {
         const { data: b } = await supabase.from("branches").select("name, code").eq("id", updates.branchId).maybeSingle();
         if (b) { set.branchId = updates.branchId; set.branchName = b.name; set.branchCode = b.code; }
       }
+      if (updates.email !== undefined) {
+        // Login uses auth.users email, so keep it in sync with the profile email.
+        const { error: authErr } = await supabase.auth.admin.updateUserById(id, {
+          email: updates.email,
+          email_confirm: true,
+        });
+        if (authErr) throw new Error(authErr.message);
+      }
       if (updates.contactPerson !== undefined) set.contactPerson = updates.contactPerson;
-      if (updates.branchRole !== undefined) set.branchRole = updates.branchRole ?? null;
       if (updates.email !== undefined) set.email = updates.email;
       if (updates.mobile !== undefined) set.mobile = updates.mobile;
       if (updates.address !== undefined) set.address = updates.address;

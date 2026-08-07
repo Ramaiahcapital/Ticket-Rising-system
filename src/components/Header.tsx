@@ -6,9 +6,11 @@ import { Menu, Bell } from "lucide-react";
 
 interface HeaderProps {
   onMenuClick: () => void;
+  onDesktopToggle: () => void;
+  sidebarCollapsed: boolean;
 }
 
-export default function Header({ onMenuClick }: HeaderProps) {
+export default function Header({ onMenuClick, onDesktopToggle, sidebarCollapsed }: HeaderProps) {
   const { user } = useAuth();
   const navigate = useNavigate();
   const [notifOpen, setNotifOpen] = useState(false);
@@ -39,8 +41,12 @@ export default function Header({ onMenuClick }: HeaderProps) {
       {/* Left */}
       <div className="flex items-center gap-3">
         <button
-          onClick={onMenuClick}
-          className="lg:hidden p-2 hover:bg-gray-100 rounded-lg"
+          onClick={() => {
+            if (window.matchMedia("(min-width: 1024px)").matches) onDesktopToggle();
+            else onMenuClick();
+          }}
+          className="p-2 hover:bg-gray-100 rounded-lg"
+          title={sidebarCollapsed ? "Show menu" : "Hide menu"}
         >
           <Menu className="w-5 h-5 text-gray-600" />
         </button>

@@ -1,7 +1,7 @@
 import { useState, useRef } from "react";
 import { trpc } from "@/providers/trpc";
-import { useBranchRoles } from "@/hooks/useBranchRoles";
-import { Plus, Pencil, Trash2, X, Loader2, Package, Settings2, ClipboardList, BarChart3, Save, Download, Printer } from "lucide-react";
+import { Plus, Pencil, Trash2, X, Loader2, Package, Settings2, ClipboardList, BarChart3, Save, Download, Printer, Eye } from "lucide-react";
+import { OrderDetailsModal } from "@/components/OrderDetailsModal";
 import ExcelJS from "exceljs";
 
 type Tab = "items" | "portal" | "orders" | "reports";
@@ -54,7 +54,10 @@ function ItemsTab() {
   const { data: items, isLoading } = trpc.stationary.listItems.useQuery({ includeInactive: true });
   const createItem = trpc.stationary.createItem.useMutation({ onSuccess: () => { utils.stationary.listItems.invalidate(); close(); } });
   const updateItem = trpc.stationary.updateItem.useMutation({ onSuccess: () => { utils.stationary.listItems.invalidate(); close(); } });
-  const deleteItem = trpc.stationary.deleteItem.useMutation({ onSuccess: () => utils.stationary.listItems.invalidate() });
+  const deleteItem = trpc.stationary.deleteItem.useMutation({
+    onSuccess: () => utils.stationary.listItems.invalidate(),
+    onError: (err) => alert(err.message),
+  });
 
   const [show, setShow] = useState(false);
   const [editing, setEditing] = useState<string | null>(null);
@@ -150,14 +153,12 @@ function ItemsTab() {
 /* ===================== Portal Settings ===================== */
 function PortalTab() {
   const utils = trpc.useUtils();
-  const { activeRoles } = useBranchRoles();
   const { data: settings } = trpc.stationary.getPortalSettings.useQuery();
   const update = trpc.stationary.updatePortalSettings.useMutation({ onSuccess: () => utils.stationary.getPortalSettings.invalidate() });
 
   const [enabled, setEnabled] = useState(false);
   const [openAt, setOpenAt] = useState("");
   const [closeAt, setCloseAt] = useState("");
-  const [roles, setRoles] = useState<string[]>([]);
 
   // sync from server
   const synced = useState(false);
@@ -165,17 +166,13 @@ function PortalTab() {
     setEnabled(settings.enabled);
     setOpenAt(settings.windowOpenAt ? settings.windowOpenAt.slice(0, 16) : "");
     setCloseAt(settings.windowCloseAt ? settings.windowCloseAt.slice(0, 16) : "");
-    setRoles(settings.allowedRoles);
     synced[1](true);
   }
-
-  const toggleRole = (r: string) => setRoles((prev) => prev.includes(r) ? prev.filter(x => x !== r) : [...prev, r]);
 
   const save = () => update.mutate({
     enabled,
     windowOpenAt: openAt || null,
     windowCloseAt: closeAt || null,
-    allowedRoles: roles as any,
   });
 
   return (
@@ -206,16 +203,8 @@ function PortalTab() {
         </div>
 
         <div>
-          <label className="block text-xs font-medium text-gray-700 mb-2">Who can access the portal (by branch role)</label>
-          <div className="flex flex-wrap gap-2">
-            {activeRoles.map((r) => {
-              const on = roles.includes(r.name);
-              return (
-                <button key={r.id} onClick={() => toggleRole(r.name)} className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors ${on ? "bg-red-50 border-red-600 text-red-600" : "bg-white border-gray-300 text-gray-600 hover:bg-gray-50"}`}>{r.name}</button>
-              );
-            })}
-          </div>
-          <p className="text-[10px] text-gray-400 mt-1">Only branches with a selected role can order stationary.</p>
+          <label className="block text-xs font-medium text-gray-700 mb-1">Portal access</label>
+          <p className="text-xs text-gray-500">All branch accounts can access the portal while it is enabled and within the order window.</p>
         </div>
 
         <div className="flex justify-end">
@@ -233,7 +222,7 @@ function OrdersTab() {
   const utils = trpc.useUtils();
   const { data: branches } = trpc.stationary.listBranches.useQuery();
   const [branchId, setBranchId] = useState<string>("");
-  const [status, setStatus] = useState<"all" | "pending" | "fulfilled" | "cancelled">("all");
+  const [status, setStatus] = useState<"all" | "pending" | "approved" | "dispatched" | "received" | "cancelled">("all");
   const defaultMonth = `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, "0")}`;
   const [month, setMonth] = useState(defaultMonth);
   const { data, isLoading } = trpc.stationary.listOrders.useQuery({ branchId: branchId || undefined, status, month });
@@ -244,8 +233,28 @@ function OrdersTab() {
 
   const updateQty = trpc.stationary.updateOrderItemQty.useMutation({ onSuccess: () => utils.stationary.listOrders.invalidate() });
   const setStatusM = trpc.stationary.setOrderStatus.useMutation({ onSuccess: () => utils.stationary.listOrders.invalidate() });
+  const deleteItemM = trpc.stationary.deleteOrderItem.useMutation({
+    onSuccess: () => utils.stationary.listOrders.invalidate(),
+    onError: (err) => alert(err.message),
+  });
 
-  const [editing, setEditing] = useState<{ orderId: string; itemId: string; qty: number } | null>(null);
+  const [viewOrderId, setViewOrderId] = useState<string | null>(null);
+  const viewOrder = orders.find((o: any) => o.id === viewOrderId) ?? null;
+
+  const statusBadge = (o: any) =>
+    o.status === "cancelled" ? (
+      <span className="px-2 py-1 bg-red-50 text-red-700 text-xs rounded-lg">Cancelled</span>
+    ) : o.status === "received" ? (
+      <span className="px-2 py-1 bg-green-50 text-green-700 text-xs rounded-lg">Received</span>
+    ) : o.status === "dispatched" ? (
+      <span className="px-2 py-1 bg-indigo-50 text-indigo-700 text-xs rounded-lg">Dispatched</span>
+    ) : o.status === "approved" ? (
+      <span className="px-2 py-1 bg-blue-50 text-blue-700 text-xs rounded-lg">Approved</span>
+    ) : o.status === "fulfilled" ? (
+      <span className="px-2 py-1 bg-green-50 text-green-700 text-xs rounded-lg">Fulfilled</span>
+    ) : (
+      <span className="flex items-center gap-1 px-2 py-1 bg-amber-50 text-amber-700 text-xs rounded-lg"><Package className="w-3 h-3" /> Pending</span>
+    );
 
   return (
     <div className="space-y-4">
@@ -266,7 +275,9 @@ function OrdersTab() {
           <select value={status} onChange={e => setStatus(e.target.value as any)} className="px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white focus:border-red-500 outline-none">
             <option value="all">All</option>
             <option value="pending">Pending</option>
-            <option value="fulfilled">Fulfilled</option>
+            <option value="approved">Approved</option>
+            <option value="dispatched">Dispatched</option>
+            <option value="received">Received</option>
             <option value="cancelled">Cancelled</option>
           </select>
         </div>
@@ -294,46 +305,41 @@ function OrdersTab() {
       {isLoading ? <div className="p-8 text-center text-gray-400 text-sm">Loading…</div> :
         orders.length === 0 ? <div className="p-8 text-center text-gray-400 text-sm bg-white rounded-xl border border-gray-200">No orders found for this month</div> :
         orders.map((o: any) => (
-          <div key={o.id} className="bg-white rounded-xl border border-gray-200">
-            <div className="flex items-center justify-between p-4 border-b border-gray-200">
-              <div>
-                <p className="text-sm font-medium text-gray-800">{o.branchName} <span className="text-xs text-gray-400">({o.branchCode})</span></p>
-                <p className="text-xs text-gray-500">Ordered: {new Date(o.createdAt).toLocaleString()} · Total: ₹{o.total}</p>
+          <div key={o.id} className="bg-white rounded-xl border border-gray-200 p-4 flex items-center justify-between gap-4">
+            <div>
+              <p className="text-sm font-medium text-gray-800">{o.branchName} <span className="text-xs text-gray-400">({o.branchCode})</span></p>
+              <p className="text-xs text-gray-500 mt-0.5">
+                {o.clusterName ? `${o.clusterName} · ` : ""}{new Date(o.createdAt).toLocaleString()}
+              </p>
+              <div className="flex items-center gap-2 mt-2">
+                <span className="text-sm font-bold text-gray-800">₹{o.total}</span>
+                <span className="text-xs text-gray-400">· {o.items.length} item{o.items.length !== 1 ? "s" : ""}</span>
               </div>
-              <select value={o.status} onChange={e => setStatusM.mutate({ orderId: o.id, status: e.target.value as any })} className="px-2 py-1 border border-gray-300 rounded-lg text-xs bg-white focus:border-red-500 outline-none">
-                <option value="pending">Pending</option>
-                <option value="fulfilled">Fulfilled</option>
-                <option value="cancelled">Cancelled</option>
-              </select>
             </div>
-            <div className="divide-y divide-gray-50">
-              {o.items.map((li: any) => (
-                <div key={li.id} className="flex items-center justify-between p-3 px-4">
-                  <div>
-                    <p className="text-sm text-gray-800">{li.name}</p>
-                    <p className="text-xs text-gray-500">₹{li.unitPrice} each</p>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <span className="text-sm text-gray-600">Qty:</span>
-                    {editing?.orderId === o.id && editing?.itemId === li.id ? (
-                      <>
-                        <input type="number" min={0} max={li.threshold || undefined} value={editing!.qty} onChange={e => {
-                          const val = Math.max(0, li.threshold ? Math.min(Number(e.target.value), li.threshold) : Number(e.target.value));
-                          setEditing({ ...editing!, qty: val });
-                        }} className="w-16 px-2 py-1 border border-gray-300 rounded-lg text-sm" />
-                        {li.threshold > 0 && <span className="text-[10px] text-gray-400">max {li.threshold}</span>}
-                        <button onClick={() => { updateQty.mutate({ orderItemId: li.id, quantity: editing!.qty }); setEditing(null); }} className="px-2 py-1 bg-red-600 text-white text-xs rounded-lg">OK</button>
-                      </>
-                    ) : (
-                      <button onClick={() => setEditing({ orderId: o.id, itemId: li.id, qty: li.quantity })} className="px-2 py-1 border border-gray-300 rounded-lg text-sm hover:bg-gray-50">{li.quantity}</button>
-                    )}
-                    <span className="text-sm text-gray-500 w-20 text-right">₹{li.lineTotal}</span>
-                  </div>
-                </div>
-              ))}
+            <div className="flex items-center gap-2">
+              {statusBadge(o)}
+              <button
+                onClick={() => setViewOrderId(o.id)}
+                className="flex items-center gap-1 px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-700 hover:bg-gray-50"
+              >
+                <Eye className="w-4 h-4" /> View Items
+              </button>
             </div>
           </div>
         ))}
+
+      {viewOrder && (
+        <OrderDetailsModal
+          order={viewOrder}
+          mode="admin"
+          canEdit={viewOrder.status !== "cancelled" && viewOrder.status !== "received"}
+          onClose={() => setViewOrderId(null)}
+          onUpdateQty={(orderItemId, quantity) => updateQty.mutate({ orderItemId, quantity })}
+          onDeleteItem={(orderItemId) => deleteItemM.mutate({ orderItemId })}
+          onSetStatus={(status) => setStatusM.mutate({ orderId: viewOrder.id, status })}
+          statusPending={setStatusM.isPending}
+        />
+      )}
     </div>
   );
 }

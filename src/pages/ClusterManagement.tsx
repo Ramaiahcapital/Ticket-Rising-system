@@ -127,7 +127,7 @@ function ClustersTab() {
                     <div key={b.id} className="flex items-center justify-between py-3">
                       <div>
                         <p className="text-sm font-medium text-gray-800">{b.branchName || b.name}</p>
-                        <p className="text-xs text-gray-500">{b.branchCode} · {b.branchRole} {!b.isActive && <span className="text-red-500">(inactive)</span>}</p>
+                        <p className="text-xs text-gray-500">{b.branchCode} {!b.isActive && <span className="text-red-500">(inactive)</span>}</p>
                       </div>
                       <button
                         onClick={() => {
@@ -378,7 +378,7 @@ function BranchAssignmentsTab() {
     if (filterCluster === "unassigned" && b.clusterId) return false;
     if (filterCluster === "assigned" && !b.clusterId) return false;
     if (filterCluster !== "all" && filterCluster !== "unassigned" && filterCluster !== "assigned" && b.clusterId !== filterCluster) return false;
-    if (search && !`${b.branchName} ${b.branchCode} ${b.branchRole ?? ""}`.toLowerCase().includes(search.toLowerCase())) return false;
+    if (search && !`${b.branchName} ${b.branchCode} ${b.email ?? ""}`.toLowerCase().includes(search.toLowerCase())) return false;
     return true;
   });
 
@@ -411,7 +411,7 @@ function BranchAssignmentsTab() {
               <div key={b.id} className="flex items-center justify-between px-4 py-3 hover:bg-gray-50">
                 <div>
                   <p className="text-sm font-medium text-gray-800">{b.branchName || b.name}</p>
-                  <p className="text-xs text-gray-500">{b.branchCode} · {b.branchRole} · {b.email}</p>
+                  <p className="text-xs text-gray-500">{b.branchCode} · {b.email}</p>
                 </div>
                 <div className="flex items-center gap-2">
                   {b.clusterId ? (
@@ -510,7 +510,7 @@ function AssignBranchModalButton({ clusterId, onAssigned }: { clusterId: string;
                   <input type="checkbox" checked={!!selected[b.id]} onChange={() => setSelected({ ...selected, [b.id]: !selected[b.id] })} className="text-red-600 rounded" />
                   <div>
                     <p className="text-sm text-gray-800">{b.branchName || b.name}</p>
-                    <p className="text-xs text-gray-500">{b.branchCode} · {b.branchRole}</p>
+                    <p className="text-xs text-gray-500">{b.branchCode}</p>
                   </div>
                 </label>
               ))}

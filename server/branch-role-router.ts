@@ -183,15 +183,37 @@ export const branchRoleRouter = createRouter({
         .from("tickets")
         .select("*", { count: "exact", head: true })
         .eq("branchRole", role.name);
-      const { count: formCount } = await supabase
-        .from("ticket_form_config")
-        .select("*", { count: "exact", head: true })
-        .eq("role", role.name);
 
-      if ((userCount ?? 0) + (ticketCount ?? 0) + (formCount ?? 0) > 0) {
+      // Users and tickets cannot be reassigned automatically, so block deletion.
+      // Form configs are admin drafts and are removed automatically.
+      if ((userCount ?? 0) > 0 || (ticketCount ?? 0) > 0) {
         throw new Error(
-          `Cannot delete role "${role.name}" — in use by ${userCount ?? 0} user(s), ${ticketCount ?? 0} ticket(s) and ${formCount ?? 0} form config(s). Deactivate it instead.`
+          `Cannot delete role "${role.name}" — still used by ${userCount ?? 0} user(s) and ${ticketCount ?? 0} ticket(s). Deactivate it instead or reassign those first.`
         );
+      }
+
+      // Clean up everything that referenced the role (form config, portal toggle,
+      // stationary allowed list) then remove the role itself.
+      await supabase.from("ticket_form_config").delete().eq("role", role.name);
+      await supabase
+        .from("system_settings")
+        .delete()
+        .eq("key", `ticket_portal_enabled_${role.name}`);
+
+      const { data: portal } = await supabase
+        .from("stationary_portal_settings")
+        .select("id, allowedRoles")
+        .limit(1)
+        .maybeSingle();
+      if (portal && Array.isArray(portal.allowedRoles) && portal.allowedRoles.includes(role.name)) {
+        await supabase
+          .from("stationary_portal_settings")
+          .update({
+            allowedRoles: portal.allowedRoles.filter((r) => r !== role.name),
+            updatedAt: new Date().toISOString(),
+            updatedBy: ctx.user.id,
+          })
+          .eq("id", portal.id);
       }
 
       const { error } = await supabase.from("branch_roles").delete().eq("id", input.id);

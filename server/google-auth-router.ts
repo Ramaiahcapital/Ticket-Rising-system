@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { createRouter, authedQuery } from "./middleware.js";
 import { getSupabaseAdmin } from "./lib/supabase.js";
+import { createAuditLog } from "./lib/utils.js";
 import {
   getGoogleAuthUrl,
   exchangeCodeForTokens,
@@ -42,6 +43,17 @@ export const googleAuthRouter = createRouter({
         { onConflict: "userId" }
       );
 
+      const userType = ctx.user.role === "admin" ? "admin" : ctx.user.role === "branch" ? "branch" : "system";
+      await createAuditLog({
+        userId: ctx.user.id,
+        userType,
+        userName: ctx.user.name ?? undefined,
+        action: "connect_email",
+        entityType: "googleAuth",
+        entityId: ctx.user.id,
+        details: { email: googleEmail },
+      });
+
       return { success: true, email: googleEmail };
     }),
 
@@ -65,6 +77,15 @@ export const googleAuthRouter = createRouter({
 
   disconnect: authedQuery.mutation(async ({ ctx }) => {
     await disconnectGoogle(ctx.user.id);
+    const userType = ctx.user.role === "admin" ? "admin" : ctx.user.role === "branch" ? "branch" : "system";
+    await createAuditLog({
+      userId: ctx.user.id,
+      userType,
+      userName: ctx.user.name ?? undefined,
+      action: "disconnect_email",
+      entityType: "googleAuth",
+      entityId: ctx.user.id,
+    });
     return { success: true };
   }),
 });

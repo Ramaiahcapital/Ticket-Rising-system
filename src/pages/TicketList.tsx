@@ -1,5 +1,5 @@
 import { useState, useCallback } from "react";
-import { useNavigate } from "react-router";
+import { useNavigate, useSearchParams } from "react-router";
 import { trpc } from "@/providers/trpc";
 import { useAuth } from "@/hooks/useAuth";
 import { useBranchRoles } from "@/hooks/useBranchRoles";
@@ -10,18 +10,20 @@ import * as XLSX from "xlsx";
 
 export default function TicketList() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const deptParam = searchParams.get("department");
   const { isAdmin } = useAuth();
   const { activeRoles, getColor } = useBranchRoles();
   const [displayLimit, setDisplayLimit] = useState(10);
   const [search, setSearch] = useState("");
   const [statusId, setStatusId] = useState<string | undefined>();
   const [branchId, setBranchId] = useState<string | undefined>();
-  const [branchRole, setBranchRole] = useState<string | undefined>();
+  const [branchRole, setBranchRole] = useState<string | undefined>(deptParam ?? undefined);
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
   const [showFilters, setShowFilters] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
-  const [activeBucket, setActiveBucket] = useState<string>("all");
+  const [activeBucket, setActiveBucket] = useState<string>(deptParam ?? "all");
   const limit = 10;
 
   const { data: ticketsData, isLoading } = trpc.ticket.list.useQuery({

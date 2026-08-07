@@ -7,7 +7,6 @@ import BranchDashboard from "@/pages/BranchDashboard";
 import TicketList from "@/pages/TicketList";
 import TicketDetail from "@/pages/TicketDetail";
 import CreateTicket from "@/pages/CreateTicket";
-import UserManagement from "@/pages/UserManagement";
 import StatusManagement from "@/pages/StatusManagement";
 import CategoryManagement from "@/pages/CategoryManagement";
 import SettingsPage from "@/pages/SettingsPage";
@@ -79,14 +78,6 @@ export default function App() {
         element={
           <ProtectedRoute>
             <TicketDetail />
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/users"
-        element={
-          <ProtectedRoute requireAdmin>
-            <UserManagement />
           </ProtectedRoute>
         }
       />

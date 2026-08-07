@@ -218,12 +218,13 @@ export const ticketRouter = createRouter({
   create: authedQuery
     .input(
       z.object({
-        subject: z.string().min(1).max(500).optional(),
+        subject: z.string().trim().min(1).max(50),
         description: z.string().min(20),
         categoryId: z.string().optional(),
         subcategoryId: z.string().optional(),
         priorityId: z.string().optional(),
         department: z.string().optional(),
+        branchRole: z.string().min(1).max(100).optional(),
         customFields: z.record(z.string(), z.any()).optional(),
       })
     )
@@ -234,16 +235,13 @@ export const ticketRouter = createRouter({
         throw new Error("Only branch users can create tickets");
       }
 
+      if (input.branchRole) {
+        await requireRoleExists(supabase, input.branchRole);
+      }
+
       const ticketNumber = await generateTicketNumber();
 
-      // Subject: use the provided value, else fall back to the first custom field answer
-      const derivedSubject =
-        (input.subject ?? "").trim() ||
-        Object.values(input.customFields ?? {}).find(
-          (v) => typeof v === "string" && v.trim().length > 0
-        )?.trim() ||
-        "New Ticket";
-      const subject = derivedSubject;
+      const subject = input.subject.trim();
 
       const { data: defaultStatuses } = await supabase
         .from("ticket_statuses")
@@ -270,7 +268,7 @@ export const ticketRouter = createRouter({
           priorityId: input.priorityId ?? null,
           statusId: defaultStatuses?.[0]?.id ?? null,
           department: input.department ?? null,
-          branchRole: creator?.branchRole ?? null,
+          branchRole: input.branchRole ?? creator?.branchRole ?? null,
           branchId: ctx.user.id,
           createdBy: ctx.user.id,
           customFields: input.customFields ?? {},
@@ -655,6 +653,7 @@ export const ticketRouter = createRouter({
             options: z.array(z.string()).optional(),
             placeholder: z.string().optional(),
             sortOrder: z.number().default(0),
+            dependsOn: z.object({ fieldId: z.string(), value: z.string() }).optional(),
           })
         ),
         filesEnabled: z.boolean().default(true),

@@ -3,7 +3,7 @@ import { createRouter, adminQuery, authedQuery } from "./middleware.js";
 import { getSupabaseAdmin } from "./lib/supabase.js";
 import { createAuditLog, requireRoleExists } from "./lib/utils.js";
 import type { BranchRole } from "./lib/db-types.js";
-import { sendEmailFromUser } from "./email-service.js";
+import { sendEmailFromUser, sendEmailFromUserResult } from "./email-service.js";
 
 const PORTAL_SETTINGS_ID = "00000000-0000-0000-0000-000000000000";
 
@@ -118,12 +118,27 @@ export const stationaryRouter = createRouter({
     .input(z.object({ id: z.string() }))
     .mutation(async ({ ctx, input }) => {
       const supabase = getSupabaseAdmin();
-      // Prevent delete if referenced by any order
-      const { count } = await supabase
+      // Block delete if referenced by any ACTIVE (non-cancelled) order.
+      const { data: refs, error: refError } = await supabase
         .from("stationary_order_items")
-        .select("*", { count: "exact", head: true })
+        .select("id, orderId")
         .eq("itemId", input.id);
-      if ((count ?? 0) > 0) throw new Error("Cannot delete item that has been ordered. Deactivate it instead.");
+      if (refError) throw new Error(refError.message);
+      if ((refs ?? []).length > 0) {
+        const orderIds = [...new Set((refs ?? []).map((r) => r.orderId))];
+        const { data: orders } = await supabase
+          .from("stationary_orders")
+          .select("id, status")
+          .in("id", orderIds);
+        const activeCount = (orders ?? []).filter((o) => o.status !== "cancelled").length;
+        if (activeCount > 0) throw new Error("Cannot delete item that has been ordered. Deactivate it instead.");
+        // Only cancelled orders reference it — remove those line items so the FK (restrict) allows delete.
+        const { error: liError } = await supabase
+          .from("stationary_order_items")
+          .delete()
+          .eq("itemId", input.id);
+        if (liError) throw new Error(liError.message);
+      }
       const { error } = await supabase.from("stationary_items").delete().eq("id", input.id);
       if (error) throw new Error(error.message);
       await createAuditLog({ userId: ctx.user.id, userType: "admin", action: "delete_stationary_item", entityType: "stationaryItem", entityId: input.id });
@@ -180,8 +195,7 @@ export const stationaryRouter = createRouter({
     const enabled = settings?.enabled ?? false;
     const inWindow = nowWindowOpen(settings);
     const allowedRoles = ((settings?.allowedRoles as unknown) ?? []) as string[];
-    const userRole = (ctx.user as { branchRole?: BranchRole | null }).branchRole;
-    const roleAllowed = ctx.user.role === "admin" ? true : !!userRole && allowedRoles.includes(userRole);
+    const roleAllowed = ctx.user.role === "admin" ? true : ctx.user.role === "branch";
     const canOrder = enabled && inWindow && roleAllowed;
     return {
       enabled,
@@ -268,9 +282,6 @@ export const stationaryRouter = createRouter({
       const settings = await getPortalSettings(supabase);
       if (!(settings?.enabled ?? false)) throw new Error("Stationary portal is disabled");
       if (!nowWindowOpen(settings)) throw new Error("Stationary portal ordering window is closed");
-      const allowedRoles = ((settings?.allowedRoles as unknown) ?? []) as string[];
-      const userRole = (ctx.user as { branchRole?: BranchRole | null }).branchRole;
-      if (!userRole || !allowedRoles.includes(userRole)) throw new Error("Your role is not allowed to order stationary");
 
       // Validate items + threshold against current window usage
       const { data: items, error } = await supabase
@@ -329,7 +340,7 @@ export const stationaryRouter = createRouter({
       const { error: lineErr } = await supabase.from("stationary_order_items").insert(lineInserts);
       if (lineErr) throw new Error(lineErr.message);
 
-      await createAuditLog({ userId: ctx.user.id, userType: "branch", userName: ctx.user.name, action: "place_stationary_order", entityType: "stationaryOrder", entityId: orderId });
+      const emailStatus = { sent: 0, failed: 0, errors: [] as string[] };
 
       // Send email from branch user to cluster
       try {
@@ -359,7 +370,7 @@ export const stationaryRouter = createRouter({
             }).join("");
             for (const cu of clusterUsers) {
               if (cu.email) {
-                await sendEmailFromUser(
+                const res = await sendEmailFromUserResult(
                   ctx.user.id,
                   cu.email,
                   `New Stationary Order from ${branchLabel}`,
@@ -378,11 +389,15 @@ export const stationaryRouter = createRouter({
                     <p style="margin-top:16px;color:#666;">Please review and approve this order in the Ramaiah Capital Stationary Portal.</p>
                   </div>`
                 );
+                if (res.ok) emailStatus.sent++;
+                else { emailStatus.failed++; emailStatus.errors.push(`${cu.email}: ${res.reason}`); }
               }
             }
           }
         }
-      } catch (e) { console.error("Stationary email failed:", e); }
+      } catch (e) { emailStatus.errors.push(String(e)); }
+
+      await createAuditLog({ userId: ctx.user.id, userType: "branch", userName: ctx.user.name, action: "place_stationary_order", entityType: "stationaryOrder", entityId: orderId, details: { emailStatus } });
 
       return { id: orderId };
     }),
@@ -415,6 +430,30 @@ export const stationaryRouter = createRouter({
       })),
     }));
   }),
+
+  // ---------------- Branch: mark an order as received ----------------
+  markReceived: authedQuery
+    .input(z.object({ orderId: z.string() }))
+    .mutation(async ({ ctx, input }) => {
+      const supabase = getSupabaseAdmin();
+      if (ctx.user.role !== "branch") throw new Error("Only branch users can mark orders as received");
+      const branchId = getActingBranchId(ctx);
+
+      const { data: order, error: oErr } = await supabase
+        .from("stationary_orders")
+        .select("id, branchId, status")
+        .eq("id", input.orderId)
+        .single();
+      if (oErr || !order) throw new Error("Order not found");
+      if (order.branchId !== branchId) throw new Error("Order does not belong to your branch");
+      if (order.status !== "dispatched") throw new Error("Order can only be marked as received after it is dispatched");
+
+      const { error } = await supabase.from("stationary_orders").update({ status: "received" }).eq("id", input.orderId);
+      if (error) throw new Error(error.message);
+
+      await createAuditLog({ userId: ctx.user.id, userType: "branch", userName: ctx.user.name, action: "receive_stationary_order", entityType: "stationaryOrder", entityId: input.orderId });
+      return { success: true };
+    }),
 
   // ---------------- Admin: reports ----------------
   reports: adminQuery
@@ -534,7 +573,7 @@ export const stationaryRouter = createRouter({
 
   // ---------------- Admin: all orders (for editing branch order qty) ----------------
   listOrders: adminQuery
-    .input(z.object({ branchId: z.string().optional(), status: z.enum(["all", "pending", "fulfilled", "cancelled"]).default("all"), month: z.string().optional() }).optional())
+    .input(z.object({ branchId: z.string().optional(), status: z.enum(["all", "pending", "approved", "dispatched", "received", "fulfilled", "cancelled"]).default("all"), month: z.string().optional() }).optional())
     .query(async ({ input }) => {
       const supabase = getSupabaseAdmin();
 
@@ -561,14 +600,18 @@ export const stationaryRouter = createRouter({
       // Fetch branch names from the branches table (o.branchId -> branches.id).
       // Fall back to profiles for legacy orders whose branchId still points at a profile id.
       const branchIds: string[] = Array.from(new Set((data ?? []).map((o: any) => o.branchId)));
+      const clusterIds: string[] = Array.from(new Set((data ?? []).map((o: any) => o.clusterId).filter(Boolean)));
       const fallbackIds = branchIds.length ? branchIds : ["00000000-0000-0000-0000-000000000000"];
-      const [{ data: branches }, { data: profs }] = await Promise.all([
+      const [{ data: branches }, { data: profs }, { data: clusters }] = await Promise.all([
         supabase.from("branches").select("id, name, code").in("id", fallbackIds),
         supabase.from("profiles").select("id, branchName, branchCode, branchRole").in("id", fallbackIds),
+        clusterIds.length ? supabase.from("clusters").select("id, name").in("id", clusterIds) : Promise.resolve({ data: [] }),
       ]);
       const branchLookup = new Map<string, any>();
       for (const b of (branches ?? []) as any[]) branchLookup.set(b.id, { name: b.name, code: b.code, branchRole: null });
       for (const p of (profs ?? []) as any[]) if (!branchLookup.has(p.id)) branchLookup.set(p.id, { name: p.branchName, code: p.branchCode, branchRole: p.branchRole });
+      const clusterLookup = new Map<string, string>();
+      for (const c of (clusters ?? []) as any[]) clusterLookup.set(c.id, c.name);
 
       const mapped = (data ?? []).map((o: any) => ({
         id: o.id,
@@ -576,6 +619,8 @@ export const stationaryRouter = createRouter({
         branchName: branchLookup.get(o.branchId)?.name ?? "",
         branchCode: branchLookup.get(o.branchId)?.code ?? "",
         branchRole: branchLookup.get(o.branchId)?.branchRole ?? null,
+        clusterId: o.clusterId ?? null,
+        clusterName: clusterLookup.get(o.clusterId) ?? "",
         status: o.status,
         orderDate: o.orderDate,
         createdAt: o.createdAt,
@@ -665,8 +710,52 @@ export const stationaryRouter = createRouter({
       return { success: true };
     }),
 
+  /** Admin: delete a line item from a branch's stationary order. */
+  deleteOrderItem: adminQuery
+    .input(z.object({ orderItemId: z.string() }))
+    .mutation(async ({ ctx, input }) => {
+      const supabase = getSupabaseAdmin();
+
+      const { data: li, error: liErr } = await supabase
+        .from("stationary_order_items")
+        .select("orderId, itemId, quantity")
+        .eq("id", input.orderItemId)
+        .single();
+      if (liErr || !li) throw new Error("Order item not found");
+
+      const { data: order } = await supabase
+        .from("stationary_orders")
+        .select("status")
+        .eq("id", li.orderId)
+        .single();
+      if (!order) throw new Error("Order not found");
+      if (order.status === "cancelled") throw new Error("Cannot modify a cancelled order");
+
+      const { data: item } = await supabase
+        .from("stationary_items")
+        .select("name")
+        .eq("id", li.itemId)
+        .single();
+
+      const { error: delErr } = await supabase
+        .from("stationary_order_items")
+        .delete()
+        .eq("id", input.orderItemId);
+      if (delErr) throw new Error(delErr.message);
+
+      await createAuditLog({
+        userId: ctx.user.id,
+        userType: "admin",
+        action: "delete_stationary_order_item",
+        entityType: "stationaryOrder",
+        entityId: li.orderId,
+        details: { orderItemId: input.orderItemId, itemName: item?.name ?? null, quantity: li.quantity },
+      });
+      return { success: true };
+    }),
+
   setOrderStatus: adminQuery
-    .input(z.object({ orderId: z.string(), status: z.enum(["pending", "fulfilled", "cancelled"]) }))
+    .input(z.object({ orderId: z.string(), status: z.enum(["pending", "approved", "dispatched", "cancelled"]) }))
     .mutation(async ({ ctx, input }) => {
       const supabase = getSupabaseAdmin();
       const { error } = await supabase.from("stationary_orders").update({ status: input.status }).eq("id", input.orderId);

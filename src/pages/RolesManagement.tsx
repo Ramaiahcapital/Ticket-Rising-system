@@ -5,6 +5,7 @@ import { Plus, Pencil, Trash2, X, Loader2, ToggleLeft, ToggleRight, Users } from
 export default function RolesManagement() {
   const [showModal, setShowModal] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [removingId, setRemovingId] = useState<string | null>(null);
   const [form, setForm] = useState({ name: "", color: "#3B82F6", isActive: true });
   const [formError, setFormError] = useState("");
 
@@ -20,7 +21,13 @@ export default function RolesManagement() {
     onError: (e) => setFormError(e.message),
   });
   const deleteRole = trpc.branchRole.delete.useMutation({
-    onSuccess: () => utils.branchRole.list.invalidate(),
+    onSuccess: (_data, variables) => {
+      setRemovingId(variables.id);
+      setTimeout(() => {
+        utils.branchRole.list.invalidate();
+        setRemovingId(null);
+      }, 300);
+    },
     onError: (e) => { alert(e.message); },
   });
 
@@ -89,7 +96,7 @@ export default function RolesManagement() {
                 ))
               ) : (
                 roles?.map((r, idx) => (
-                  <tr key={r.id} className="border-b border-gray-50 hover:bg-gray-50 transition-colors">
+                  <tr key={r.id} className={`border-b border-gray-50 hover:bg-gray-50 transition-colors ${removingId === r.id ? "row-removing" : "fade-in-up"}`}>
                     <td className="py-3 px-2"></td>
                     <td className="py-3 px-4 text-sm text-gray-500">{idx + 1}</td>
                     <td className="py-3 px-4">
@@ -105,7 +112,9 @@ export default function RolesManagement() {
                     <td className="py-3 px-4">
                       <div className="flex gap-1">
                         <button onClick={() => openEdit(r)} className="p-1.5 hover:bg-blue-50 rounded-lg text-gray-400 hover:text-blue-600"><Pencil className="w-4 h-4" /></button>
-                        <button onClick={() => { if (confirm(`Delete role "${r.name}"?`)) deleteRole.mutate({ id: r.id }); }} className="p-1.5 hover:bg-red-50 rounded-lg text-gray-400 hover:text-red-600"><Trash2 className="w-4 h-4" /></button>
+                        <button onClick={() => { if (confirm(`Delete role "${r.name}"?`)) deleteRole.mutate({ id: r.id }); }} disabled={removingId === r.id} className="p-1.5 hover:bg-red-50 rounded-lg text-gray-400 hover:text-red-600 disabled:opacity-50">
+                          {removingId === r.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
+                        </button>
                       </div>
                     </td>
                   </tr>
