@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { trpc } from "@/providers/trpc";
-import { Loader2, Package, ShoppingCart, CheckCircle2, XCircle, Clock, AlertTriangle } from "lucide-react";
+import { Loader2, Package, ShoppingCart, CheckCircle2, XCircle, Clock, AlertTriangle, Eye } from "lucide-react";
+import { OrderDetailsModal } from "@/components/OrderDetailsModal";
 
 const STATUS_META: Record<string, { label: string; cls: string }> = {
   pending: { label: "Pending", cls: "bg-amber-50 text-amber-700" },
@@ -33,12 +34,19 @@ export default function StationaryPortal() {
     },
     onError: (e) => alert(e.message),
   });
+  const updateQty = trpc.stationary.updateMyOrderItemQty.useMutation({ onSuccess: () => utils.stationary.myOrders.invalidate() });
+  const deleteItem = trpc.stationary.deleteMyOrderItem.useMutation({ onSuccess: () => utils.stationary.myOrders.invalidate(), onError: (e) => alert(e.message) });
+  const cancelOrder = trpc.stationary.cancelOrder.useMutation({ onSuccess: () => utils.stationary.myOrders.invalidate(), onError: (e) => alert(e.message) });
 
   const [cart, setCart] = useState<Record<string, number>>({});
   const orderDate = new Date().toISOString().slice(0, 10);
   const [error, setError] = useState<string | null>(null);
   const [placed, setPlaced] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
+  const [viewOrderId, setViewOrderId] = useState<string | null>(null);
+
+  const myOrdersList = myOrders.data ?? [];
+  const viewOrder = myOrdersList.find((o: any) => o.id === viewOrderId) ?? null;
 
   // One order per branch per window: block if an order already exists for this window.
   const windowStart = status.data?.windowOpenAt ?? "1970-01-01";
@@ -175,11 +183,11 @@ export default function StationaryPortal() {
       {/* My Orders */}
       <div className="bg-white rounded-xl border border-gray-200">
         <div className="p-4 border-b border-gray-200"><h3 className="font-semibold text-gray-800">My Orders</h3></div>
-        {myOrders.data?.length === 0 ? (
+        {myOrdersList.length === 0 ? (
           <div className="p-6 text-center text-gray-400 text-sm">No orders yet.</div>
         ) : (
           <div className="divide-y divide-gray-50">
-            {myOrders.data?.map((o: any) => (
+            {myOrdersList.map((o: any) => (
               <div key={o.id} className="p-4">
                 <div className="flex justify-between items-center mb-1">
                   <p className="text-sm font-medium text-gray-800">Order on {o.orderDate || new Date(o.createdAt).toLocaleDateString()}</p>
@@ -193,6 +201,12 @@ export default function StationaryPortal() {
                         {markReceived.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : <CheckCircle2 className="w-3 h-3" />} Received
                       </button>
                     )}
+                    <button
+                      onClick={() => setViewOrderId(o.id)}
+                      className="flex items-center gap-1 px-2.5 py-1 border border-gray-300 rounded-lg text-xs text-gray-700 hover:bg-gray-50"
+                    >
+                      <Eye className="w-3.5 h-3.5" /> {o.status === "pending" ? "View / Edit" : "View"}
+                    </button>
                     <span className={`text-xs px-2 py-0.5 rounded-full ${STATUS_META[o.status]?.cls ?? "bg-gray-100 text-gray-600"}`}>
                       {STATUS_META[o.status]?.label ?? o.status}
                     </span>
@@ -204,6 +218,20 @@ export default function StationaryPortal() {
           </div>
         )}
       </div>
+
+      {/* Order Details / Edit Modal */}
+      {viewOrder && (
+        <OrderDetailsModal
+          order={viewOrder}
+          mode="branch"
+          canEdit={viewOrder.status === "pending"}
+          onClose={() => setViewOrderId(null)}
+          onUpdateQty={(orderItemId, quantity) => updateQty.mutate({ orderItemId, quantity })}
+          onDeleteItem={(orderItemId) => deleteItem.mutate({ orderItemId })}
+          onCancelOrder={() => cancelOrder.mutate({ orderId: viewOrder.id })}
+          cancelPending={cancelOrder.isPending}
+        />
+      )}
 
       {/* Confirm Order Modal */}
       {showConfirm && (

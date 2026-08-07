@@ -4,18 +4,18 @@ import { X, CheckCircle2, XCircle, Trash2, Loader2, Package } from "lucide-react
 interface OrderDetailsModalProps {
   order: any;
   onClose: () => void;
-  /** "cluster" shows Approve/Reject actions; "admin" shows a status selector. */
-  mode: "cluster" | "admin";
+  /** "cluster" shows an Approve action; "admin" shows a status selector; "branch" shows a Cancel button. */
+  mode: "cluster" | "admin" | "branch";
   /** When false, qty edit + delete are hidden. */
   canEdit: boolean;
   onUpdateQty: (orderItemId: string, quantity: number) => void;
   onDeleteItem: (orderItemId: string) => void;
   onApprove?: () => void;
-  onReject?: () => void;
   approvePending?: boolean;
-  rejectPending?: boolean;
-  onSetStatus?: (status: "pending" | "approved" | "dispatched" | "cancelled") => void;
+  onSetStatus?: (status: "pending" | "approved" | "dispatched") => void;
   statusPending?: boolean;
+  onCancelOrder?: () => void;
+  cancelPending?: boolean;
 }
 
 export function OrderDetailsModal({
@@ -26,11 +26,11 @@ export function OrderDetailsModal({
   onUpdateQty,
   onDeleteItem,
   onApprove,
-  onReject,
   approvePending,
-  rejectPending,
   onSetStatus,
   statusPending,
+  onCancelOrder,
+  cancelPending,
 }: OrderDetailsModalProps) {
   const [editing, setEditing] = useState<{ itemId: string; qty: number } | null>(null);
 
@@ -54,7 +54,7 @@ export function OrderDetailsModal({
             <div className="flex items-center gap-2 mt-2">
               <span className="text-sm font-bold text-gray-800">Total: ₹{order?.total}</span>
               <span className="text-xs text-gray-400">· {itemCount} item{itemCount !== 1 ? "s" : ""}</span>
-              {mode === "admin" ? (
+              {mode === "admin" || mode === "branch" ? (
                 order?.status === "cancelled" ? (
                   <span className="flex items-center gap-1 px-2 py-0.5 bg-red-50 text-red-700 text-xs rounded-full"><XCircle className="w-3 h-3" /> Cancelled</span>
                 ) : order?.status === "received" ? (
@@ -140,42 +140,48 @@ export function OrderDetailsModal({
         </div>
 
         {/* Footer actions */}
-        {(mode === "cluster" ? (onApprove || onReject) && !approved && order?.status !== "cancelled" : onSetStatus) && (
-          <div className="p-4 border-t border-gray-200 flex items-center justify-end gap-2">
-            {mode === "cluster" ? (
-              <>
-                <button
-                  onClick={onReject}
-                  disabled={rejectPending}
-                  className="flex items-center gap-1 px-4 py-2 bg-red-600 text-white text-sm rounded-lg hover:bg-red-700 disabled:opacity-50"
-                >
-                  {rejectPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <XCircle className="w-4 h-4" />} Reject
-                </button>
-                <button
-                  onClick={onApprove}
-                  disabled={approvePending}
-                  className="flex items-center gap-1 px-4 py-2 bg-green-600 text-white text-sm rounded-lg hover:bg-green-700 disabled:opacity-50"
-                >
-                  {approvePending ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle2 className="w-4 h-4" />} Approve
-                </button>
-              </>
-            ) : (
+        {mode === "cluster" ? (
+          onApprove && !approved && order?.status !== "cancelled" && (
+            <div className="p-4 border-t border-gray-200 flex items-center justify-end gap-2">
+              <button
+                onClick={onApprove}
+                disabled={approvePending}
+                className="flex items-center gap-1 px-4 py-2 bg-green-600 text-white text-sm rounded-lg hover:bg-green-700 disabled:opacity-50"
+              >
+                {approvePending ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle2 className="w-4 h-4" />} Approve
+              </button>
+            </div>
+          )
+        ) : mode === "admin" ? (
+          onSetStatus && (
+            <div className="p-4 border-t border-gray-200 flex items-center justify-end gap-2">
               <div className="flex items-center gap-2">
                 <span className="text-sm text-gray-600">Status:</span>
                 <select
-                  value={order?.status ?? "pending"}
+                  value={["pending", "approved", "dispatched"].includes(order?.status) ? order.status : "pending"}
                   disabled={statusPending}
-                  onChange={e => onSetStatus?.(e.target.value as "pending" | "approved" | "dispatched" | "cancelled")}
+                  onChange={e => onSetStatus?.(e.target.value as "pending" | "approved" | "dispatched")}
                   className="px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white focus:border-red-500 outline-none"
                 >
                   <option value="pending">Pending</option>
                   <option value="approved">Approved</option>
                   <option value="dispatched">Dispatched</option>
-                  <option value="cancelled">Cancelled</option>
                 </select>
               </div>
-            )}
-          </div>
+            </div>
+          )
+        ) : (
+          onCancelOrder && order?.status === "pending" && (
+            <div className="p-4 border-t border-gray-200 flex items-center justify-end gap-2">
+              <button
+                onClick={() => { if (window.confirm("Cancel this order?")) onCancelOrder(); }}
+                disabled={cancelPending}
+                className="flex items-center gap-1 px-4 py-2 bg-red-600 text-white text-sm rounded-lg hover:bg-red-700 disabled:opacity-50"
+              >
+                {cancelPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <XCircle className="w-4 h-4" />} Cancel Order
+              </button>
+            </div>
+          )
         )}
       </div>
     </div>

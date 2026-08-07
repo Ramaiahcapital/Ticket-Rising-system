@@ -22,9 +22,6 @@ export default function ClusterOrders() {
   const approveOrder = trpc.cluster.approveOrder.useMutation({
     onSuccess: () => utils.cluster.clusterOrders.invalidate(),
   });
-  const rejectOrder = trpc.cluster.rejectOrder.useMutation({
-    onSuccess: () => utils.cluster.clusterOrders.invalidate(),
-  });
   const updateQty = trpc.cluster.updateOrderItemQty.useMutation({
     onSuccess: () => utils.cluster.clusterOrders.invalidate(),
   });
@@ -169,9 +166,7 @@ export default function ClusterOrders() {
           onUpdateQty={(orderItemId, quantity) => updateQty.mutate({ orderItemId, quantity })}
           onDeleteItem={(orderItemId) => deleteItem.mutate({ orderItemId })}
           onApprove={() => approveOrder.mutate({ orderId: viewOrder.id })}
-          onReject={() => { if (window.confirm("Reject this order?")) rejectOrder.mutate({ orderId: viewOrder.id }); }}
           approvePending={approveOrder.isPending}
-          rejectPending={rejectOrder.isPending}
         />
       )}
     </div>

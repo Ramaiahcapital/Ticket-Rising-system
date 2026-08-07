@@ -3,7 +3,7 @@ import { createRouter, adminQuery, authedQuery } from "./middleware.js";
 import { getSupabaseAdmin } from "./lib/supabase.js";
 import { createAuditLog, requireRoleExists } from "./lib/utils.js";
 import type { BranchRole } from "./lib/db-types.js";
-import { sendEmailFromUser, sendEmailFromUserResult } from "./email-service.js";
+import { sendEmailFromUserResult } from "./email-service.js";
 
 const PORTAL_SETTINGS_ID = "00000000-0000-0000-0000-000000000000";
 
@@ -409,17 +409,33 @@ export const stationaryRouter = createRouter({
     const branchId = getActingBranchId(ctx);
     const { data, error } = (await supabase
       .from("stationary_orders")
-      .select("*, stationary_order_items(*, stationary_items(name, unit))")
+      .select("*, stationary_order_items(*, stationary_items(name, unit, threshold))")
       .eq("branchId", branchId)
       .order("createdAt", { ascending: false })) as any;
     if (error) throw new Error(error.message);
+
+    const branchIds: string[] = Array.from(new Set((data ?? []).map((o: any) => o.branchId)));
+    const clusterIds: string[] = Array.from(new Set((data ?? []).map((o: any) => o.clusterId).filter(Boolean)));
+    const fallbackIds = branchIds.length ? branchIds : ["00000000-0000-0000-0000-000000000000"];
+    const [{ data: branches }, { data: clusters }] = await Promise.all([
+      supabase.from("branches").select("id, name, code").in("id", fallbackIds),
+      clusterIds.length ? supabase.from("clusters").select("id, name").in("id", clusterIds) : Promise.resolve({ data: [] }),
+    ]);
+    const branchLookup = new Map<string, any>((branches ?? []).map((b: any) => [b.id, b]));
+    const clusterLookup = new Map<string, string>((clusters ?? []).map((c: any) => [c.id, c.name]));
+
     return (data ?? []).map((o: any) => ({
       id: o.id,
       status: o.status,
       orderDate: o.orderDate,
       createdAt: o.createdAt,
+      branchId: o.branchId,
+      branchName: branchLookup.get(o.branchId)?.name ?? "",
+      branchCode: branchLookup.get(o.branchId)?.code ?? "",
+      clusterId: o.clusterId ?? null,
+      clusterName: clusterLookup.get(o.clusterId) ?? "",
       total: (o.stationary_order_items ?? []).reduce((s: number, li: { lineTotal?: number }) => s + Number(li.lineTotal ?? 0), 0),
-      items: (o.stationary_order_items ?? []).map((li: { id: string; itemId: string; quantity: number; unitPrice?: number; lineTotal?: number; stationary_items?: { name?: string; unit?: string | null } }) => ({
+      items: (o.stationary_order_items ?? []).map((li: { id: string; itemId: string; quantity: number; unitPrice?: number; lineTotal?: number; stationary_items?: { name?: string; unit?: string | null; threshold?: number | null } }) => ({
         id: li.id,
         itemId: li.itemId,
         quantity: li.quantity,
@@ -427,6 +443,7 @@ export const stationaryRouter = createRouter({
         lineTotal: li.lineTotal ?? 0,
         name: li.stationary_items?.name ?? "",
         unit: li.stationary_items?.unit ?? null,
+        threshold: li.stationary_items?.threshold ?? 0,
       })),
     }));
   }),
@@ -510,6 +527,131 @@ export const stationaryRouter = createRouter({
 
       await createAuditLog({ userId: ctx.user.id, userType: "branch", userName: ctx.user.name, action: "receive_stationary_order", entityType: "stationaryOrder", entityId: input.orderId, details: { emailStatus } });
       return { success: true, emailStatus };
+    }),
+
+  // ---------------- Branch: edit qty of an item in a pending order ----------------
+  updateMyOrderItemQty: authedQuery
+    .input(z.object({ orderItemId: z.string(), quantity: z.number().int().min(0) }))
+    .mutation(async ({ ctx, input }) => {
+      const supabase = getSupabaseAdmin();
+      if (ctx.user.role !== "branch") throw new Error("Only branch users can edit their order");
+      const branchId = getActingBranchId(ctx);
+
+      const { data: li, error: liErr } = await supabase
+        .from("stationary_order_items")
+        .select("orderId, itemId, quantity")
+        .eq("id", input.orderItemId)
+        .single();
+      if (liErr || !li) throw new Error("Order item not found");
+
+      const { data: order } = await supabase
+        .from("stationary_orders")
+        .select("branchId, status")
+        .eq("id", li.orderId)
+        .single();
+      if (!order) throw new Error("Order not found");
+      if (order.branchId !== branchId) throw new Error("Order does not belong to your branch");
+      if (order.status !== "pending") throw new Error("Order can only be edited while it is pending");
+
+      const { data: item } = await supabase
+        .from("stationary_items")
+        .select("name, threshold")
+        .eq("id", li.itemId)
+        .single();
+      const threshold = item?.threshold ?? 0;
+
+      if (threshold > 0) {
+        const { data: siblings } = await supabase
+          .from("stationary_order_items")
+          .select("itemId, quantity, orderId")
+          .eq("itemId", li.itemId);
+        let otherQty = 0;
+        for (const s of siblings ?? []) {
+          if (s.orderId === li.orderId && s.itemId === li.itemId) otherQty += s.quantity;
+        }
+        const totalAfter = otherQty - li.quantity + input.quantity;
+        if (totalAfter > threshold) {
+          throw new Error(`Quantity exceeds the per-branch limit for ${item?.name ?? "item"} (max ${threshold} per window)`);
+        }
+      }
+
+      const { error: updErr } = await supabase
+        .from("stationary_order_items")
+        .update({ quantity: input.quantity })
+        .eq("id", input.orderItemId);
+      if (updErr) throw new Error(updErr.message);
+      await createAuditLog({ userId: ctx.user.id, userType: "branch", userName: ctx.user.name, action: "edit_stationary_order_qty", entityType: "stationaryOrder", entityId: li.orderId, details: { orderItemId: input.orderItemId, quantity: input.quantity } });
+      return { success: true };
+    }),
+
+  // ---------------- Branch: delete an item from a pending order ----------------
+  deleteMyOrderItem: authedQuery
+    .input(z.object({ orderItemId: z.string() }))
+    .mutation(async ({ ctx, input }) => {
+      const supabase = getSupabaseAdmin();
+      if (ctx.user.role !== "branch") throw new Error("Only branch users can edit their order");
+      const branchId = getActingBranchId(ctx);
+
+      const { data: li, error: liErr } = await supabase
+        .from("stationary_order_items")
+        .select("orderId, itemId, quantity")
+        .eq("id", input.orderItemId)
+        .single();
+      if (liErr || !li) throw new Error("Order item not found");
+
+      const { data: order } = await supabase
+        .from("stationary_orders")
+        .select("branchId, status")
+        .eq("id", li.orderId)
+        .single();
+      if (!order) throw new Error("Order not found");
+      if (order.branchId !== branchId) throw new Error("Order does not belong to your branch");
+      if (order.status !== "pending") throw new Error("Order can only be edited while it is pending");
+
+      const { data: item } = await supabase
+        .from("stationary_items")
+        .select("name")
+        .eq("id", li.itemId)
+        .single();
+
+      const { error: delErr } = await supabase
+        .from("stationary_order_items")
+        .delete()
+        .eq("id", input.orderItemId);
+      if (delErr) throw new Error(delErr.message);
+      await createAuditLog({
+        userId: ctx.user.id,
+        userType: "branch",
+        userName: ctx.user.name,
+        action: "delete_stationary_order_item",
+        entityType: "stationaryOrder",
+        entityId: li.orderId,
+        details: { orderItemId: input.orderItemId, itemName: item?.name ?? null, quantity: li.quantity },
+      });
+      return { success: true };
+    }),
+
+  // ---------------- Branch: cancel their own pending order ----------------
+  cancelOrder: authedQuery
+    .input(z.object({ orderId: z.string() }))
+    .mutation(async ({ ctx, input }) => {
+      const supabase = getSupabaseAdmin();
+      if (ctx.user.role !== "branch") throw new Error("Only branch users can cancel their order");
+      const branchId = getActingBranchId(ctx);
+
+      const { data: order, error: oErr } = await supabase
+        .from("stationary_orders")
+        .select("id, branchId, status")
+        .eq("id", input.orderId)
+        .single();
+      if (oErr || !order) throw new Error("Order not found");
+      if (order.branchId !== branchId) throw new Error("Order does not belong to your branch");
+      if (order.status !== "pending") throw new Error("Only pending orders can be cancelled");
+
+      const { error } = await supabase.from("stationary_orders").update({ status: "cancelled" }).eq("id", input.orderId);
+      if (error) throw new Error(error.message);
+      await createAuditLog({ userId: ctx.user.id, userType: "branch", userName: ctx.user.name, action: "cancel_stationary_order", entityType: "stationaryOrder", entityId: input.orderId });
+      return { success: true };
     }),
 
   // ---------------- Admin: reports ----------------
@@ -812,45 +954,12 @@ export const stationaryRouter = createRouter({
     }),
 
   setOrderStatus: adminQuery
-    .input(z.object({ orderId: z.string(), status: z.enum(["pending", "approved", "dispatched", "cancelled"]) }))
+    .input(z.object({ orderId: z.string(), status: z.enum(["pending", "approved", "dispatched"]) }))
     .mutation(async ({ ctx, input }) => {
       const supabase = getSupabaseAdmin();
       const { error } = await supabase.from("stationary_orders").update({ status: input.status }).eq("id", input.orderId);
       if (error) throw new Error(error.message);
       await createAuditLog({ userId: ctx.user.id, userType: "admin", action: "set_stationary_order_status", entityType: "stationaryOrder", entityId: input.orderId, details: { status: input.status } });
-
-      if (input.status === "cancelled") {
-        try {
-          const { data: order } = await supabase
-            .from("stationary_orders")
-            .select("createdBy")
-            .eq("id", input.orderId)
-            .maybeSingle();
-          if (order?.createdBy) {
-            const { data: branchUser } = await supabase
-              .from("profiles")
-              .select("email, branchName")
-              .eq("id", order.createdBy)
-              .maybeSingle();
-            if (branchUser?.email) {
-              await sendEmailFromUser(
-                ctx.user.id,
-                branchUser.email,
-                `Order Cancelled by Admin`,
-                `<div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;">
-                  <h2 style="color:#DC2626;">Order Cancelled</h2>
-                  <table style="width:100%;border-collapse:collapse;">
-                    <tr><td style="padding:8px;font-weight:bold;border-bottom:1px solid #eee;">Branch</td><td style="padding:8px;border-bottom:1px solid #eee;">${branchUser.branchName || "Branch"}</td></tr>
-                    <tr><td style="padding:8px;font-weight:bold;border-bottom:1px solid #eee;">Cancelled At</td><td style="padding:8px;border-bottom:1px solid #eee;">${new Date().toLocaleString()}</td></tr>
-                  </table>
-                  <p style="margin-top:16px;color:#666;">Your stationary order has been cancelled by the administrator. You can place a new order from the Stationary portal.</p>
-                </div>`
-              );
-            }
-          }
-        } catch (e) { console.error("Admin cancel email failed:", e); }
-      }
-
       return { success: true };
     }),
 
