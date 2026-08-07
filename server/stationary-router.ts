@@ -79,9 +79,9 @@ async function resubmitForClusterApproval(
           const res = await sendEmailFromUserResult(
             ctx.user.id,
             cu.email,
-            `Stationary Order Updated — Re-approval Required`,
+            `Stationary Order Updated — Review Required`,
             `<div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;">
-              <h2 style="color:#DC2626;">Order Updated — Re-approval Required</h2>
+              <h2 style="color:#DC2626;">Order Updated — Review Required</h2>
               <table style="width:100%;border-collapse:collapse;">
                 <tr><td style="padding:8px;font-weight:bold;border-bottom:1px solid #eee;">Branch</td><td style="padding:8px;border-bottom:1px solid #eee;">${branchLabel}</td></tr>
                 <tr><td style="padding:8px;font-weight:bold;border-bottom:1px solid #eee;">Cluster</td><td style="padding:8px;border-bottom:1px solid #eee;">${clusterLabel}</td></tr>
@@ -94,7 +94,7 @@ async function resubmitForClusterApproval(
                 <tbody>${itemList}</tbody>
               </table>
               <p style="margin-top:12px;font-weight:bold;">Grand Total: ₹${grandTotal}</p>
-              <p style="margin-top:16px;color:#666;">A branch modified this order after it was approved. Please review and approve it again in the Ramaiah Capital Stationary Portal.</p>
+              <p style="margin-top:16px;color:#666;">A branch modified this order. Please review and approve it in the Ramaiah Capital Stationary Portal.</p>
             </div>`
           );
           if (res.ok) emailStatus.sent++;
@@ -662,10 +662,7 @@ export const stationaryRouter = createRouter({
         .eq("id", input.orderItemId);
       if (updErr) throw new Error(updErr.message);
 
-      let emailStatus: { sent: number; failed: number; errors: string[] } | undefined;
-      if (order.clusterApprovedAt) {
-        emailStatus = await resubmitForClusterApproval(supabase, ctx, li.orderId, order.clusterId);
-      }
+      const emailStatus = await resubmitForClusterApproval(supabase, ctx, li.orderId, order.clusterId);
 
       await createAuditLog({ userId: ctx.user.id, userType: "branch", userName: ctx.user.name, action: "edit_stationary_order_qty", entityType: "stationaryOrder", entityId: li.orderId, details: { orderItemId: input.orderItemId, quantity: input.quantity } });
       return { success: true, emailStatus };
@@ -707,10 +704,7 @@ export const stationaryRouter = createRouter({
         .eq("id", input.orderItemId);
       if (delErr) throw new Error(delErr.message);
 
-      let emailStatus: { sent: number; failed: number; errors: string[] } | undefined;
-      if (order.clusterApprovedAt) {
-        emailStatus = await resubmitForClusterApproval(supabase, ctx, li.orderId, order.clusterId);
-      }
+      const emailStatus = await resubmitForClusterApproval(supabase, ctx, li.orderId, order.clusterId);
 
       await createAuditLog({
         userId: ctx.user.id,
@@ -771,10 +765,7 @@ export const stationaryRouter = createRouter({
         .insert({ orderId: input.orderId, itemId: input.itemId, quantity: input.quantity, unitPrice, lineTotal: unitPrice * input.quantity });
       if (insErr) throw new Error(insErr.message);
 
-      let emailStatus: { sent: number; failed: number; errors: string[] } | undefined;
-      if (order.clusterApprovedAt) {
-        emailStatus = await resubmitForClusterApproval(supabase, ctx, input.orderId, order.clusterId);
-      }
+      const emailStatus = await resubmitForClusterApproval(supabase, ctx, input.orderId, order.clusterId);
 
       await createAuditLog({
         userId: ctx.user.id,
