@@ -441,7 +441,7 @@ export const stationaryRouter = createRouter({
 
       const { data: order, error: oErr } = await supabase
         .from("stationary_orders")
-        .select("id, branchId, status")
+        .select("id, branchId, clusterId, orderDate, createdAt, status")
         .eq("id", input.orderId)
         .single();
       if (oErr || !order) throw new Error("Order not found");
@@ -451,8 +451,65 @@ export const stationaryRouter = createRouter({
       const { error } = await supabase.from("stationary_orders").update({ status: "received" }).eq("id", input.orderId);
       if (error) throw new Error(error.message);
 
-      await createAuditLog({ userId: ctx.user.id, userType: "branch", userName: ctx.user.name, action: "receive_stationary_order", entityType: "stationaryOrder", entityId: input.orderId });
-      return { success: true };
+      const emailStatus = { sent: 0, failed: 0, errors: [] as string[] };
+      const orderDateLabel = order.orderDate || (order.createdAt ? new Date(order.createdAt).toLocaleDateString() : new Date().toLocaleDateString());
+
+      // Send "Order Received" email to all admins + the order's cluster users.
+      try {
+        const [{ data: admins }, { data: clusterUsers }, { data: sender }, { data: clusterInfo }, { data: orderLines }] = await Promise.all([
+          supabase.from("profiles").select("id, email").eq("role", "admin").eq("isActive", true),
+          order.clusterId
+            ? supabase.from("profiles").select("id, email").eq("clusterId", order.clusterId).eq("role", "cluster").eq("isActive", true)
+            : Promise.resolve({ data: [] }),
+          supabase.from("profiles").select("branchName, email").eq("id", ctx.user.id).maybeSingle(),
+          order.clusterId
+            ? supabase.from("clusters").select("name").eq("id", order.clusterId).maybeSingle()
+            : Promise.resolve({ data: null }),
+          supabase.from("stationary_order_items").select("quantity, unitPrice, lineTotal, stationary_items(name, unit)").eq("orderId", input.orderId),
+        ]) as any;
+
+        const recipients = [...(admins ?? []), ...(clusterUsers ?? [])];
+        if (recipients.length && sender?.email) {
+          const branchLabel = sender.branchName || "Branch";
+          const clusterLabel = clusterInfo?.name || "Cluster";
+          const itemList = (orderLines ?? []).map((li: any) =>
+            `<tr><td style="padding:6px 8px;border-bottom:1px solid #eee;">${li.stationary_items?.name || "Item"}</td><td style="padding:6px 8px;border-bottom:1px solid #eee;text-align:center;">${li.quantity}</td><td style="padding:6px 8px;border-bottom:1px solid #eee;text-align:right;">₹${Number(li.lineTotal ?? 0)}</td></tr>`
+          ).join("");
+          const grandTotal = (orderLines ?? []).reduce((s: number, li: any) => s + Number(li.lineTotal ?? 0), 0);
+
+          for (const r of recipients) {
+            if (r.email) {
+              const res = await sendEmailFromUserResult(
+                ctx.user.id,
+                r.email,
+                `Stationary Order Received by ${branchLabel}`,
+                `<div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;">
+                  <h2 style="color:#16A34A;">Order Received</h2>
+                  <table style="width:100%;border-collapse:collapse;">
+                    <tr><td style="padding:8px;font-weight:bold;border-bottom:1px solid #eee;">Branch</td><td style="padding:8px;border-bottom:1px solid #eee;">${branchLabel}</td></tr>
+                    <tr><td style="padding:8px;font-weight:bold;border-bottom:1px solid #eee;">Cluster</td><td style="padding:8px;border-bottom:1px solid #eee;">${clusterLabel}</td></tr>
+                    <tr><td style="padding:8px;font-weight:bold;border-bottom:1px solid #eee;">Order Date</td><td style="padding:8px;border-bottom:1px solid #eee;">${orderDateLabel}</td></tr>
+                    <tr><td style="padding:8px;font-weight:bold;border-bottom:1px solid #eee;">Received By</td><td style="padding:8px;border-bottom:1px solid #eee;">${ctx.user.name || sender.branchName || "Branch"}</td></tr>
+                    <tr><td style="padding:8px;font-weight:bold;border-bottom:1px solid #eee;">Received At</td><td style="padding:8px;border-bottom:1px solid #eee;">${new Date().toLocaleString()}</td></tr>
+                  </table>
+                  <h3 style="margin-top:16px;">Items Received</h3>
+                  <table style="width:100%;border-collapse:collapse;border:1px solid #eee;">
+                    <thead><tr style="background:#f9fafb;"><th style="padding:6px 8px;text-align:left;border-bottom:2px solid #ddd;">Item</th><th style="padding:6px 8px;text-align:center;border-bottom:2px solid #ddd;">Qty</th><th style="padding:6px 8px;text-align:right;border-bottom:2px solid #ddd;">Amount</th></tr></thead>
+                    <tbody>${itemList}</tbody>
+                  </table>
+                  <p style="margin-top:12px;font-weight:bold;">Grand Total: ₹${grandTotal}</p>
+                  <p style="margin-top:16px;color:#666;">The branch has confirmed receipt of this stationary order.</p>
+                </div>`
+              );
+              if (res.ok) emailStatus.sent++;
+              else { emailStatus.failed++; emailStatus.errors.push(`${r.email}: ${res.reason}`); }
+            }
+          }
+        }
+      } catch (e) { emailStatus.errors.push(String(e)); }
+
+      await createAuditLog({ userId: ctx.user.id, userType: "branch", userName: ctx.user.name, action: "receive_stationary_order", entityType: "stationaryOrder", entityId: input.orderId, details: { emailStatus } });
+      return { success: true, emailStatus };
     }),
 
   // ---------------- Admin: reports ----------------

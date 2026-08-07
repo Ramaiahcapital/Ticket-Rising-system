@@ -27,7 +27,10 @@ export default function StationaryPortal() {
     onError: (e) => { setError(e.message); setShowConfirm(false); },
   });
   const markReceived = trpc.stationary.markReceived.useMutation({
-    onSuccess: () => utils.stationary.myOrders.invalidate(),
+    onSuccess: (res) => {
+      utils.stationary.myOrders.invalidate();
+      if ((res as any)?.emailStatus?.failed > 0) alert("Order marked as received, but some notification emails failed to send.");
+    },
     onError: (e) => alert(e.message),
   });
 
