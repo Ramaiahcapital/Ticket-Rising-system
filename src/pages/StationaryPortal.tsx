@@ -37,6 +37,13 @@ export default function StationaryPortal() {
   const updateQty = trpc.stationary.updateMyOrderItemQty.useMutation({ onSuccess: () => utils.stationary.myOrders.invalidate() });
   const deleteItem = trpc.stationary.deleteMyOrderItem.useMutation({ onSuccess: () => utils.stationary.myOrders.invalidate(), onError: (e) => alert(e.message) });
   const cancelOrder = trpc.stationary.cancelOrder.useMutation({ onSuccess: () => utils.stationary.myOrders.invalidate(), onError: (e) => alert(e.message) });
+  const addItem = trpc.stationary.addMyOrderItem.useMutation({
+    onSuccess: () => {
+      utils.stationary.myOrders.invalidate();
+      utils.stationary.getOrderableItems.invalidate();
+    },
+    onError: (e) => alert(e.message),
+  });
 
   const [cart, setCart] = useState<Record<string, number>>({});
   const orderDate = new Date().toISOString().slice(0, 10);
@@ -230,6 +237,9 @@ export default function StationaryPortal() {
           onDeleteItem={(orderItemId) => deleteItem.mutate({ orderItemId })}
           onCancelOrder={() => cancelOrder.mutate({ orderId: viewOrder.id })}
           cancelPending={cancelOrder.isPending}
+          onAddItem={(itemId, quantity) => addItem.mutate({ orderId: viewOrder.id, itemId, quantity })}
+          availableItems={items as any}
+          addPending={addItem.isPending}
         />
       )}
 

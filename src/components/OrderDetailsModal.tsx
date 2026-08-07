@@ -16,6 +16,9 @@ interface OrderDetailsModalProps {
   statusPending?: boolean;
   onCancelOrder?: () => void;
   cancelPending?: boolean;
+  onAddItem?: (itemId: string, quantity: number) => void;
+  availableItems?: { id: string; name: string; unit?: string | null; threshold: number; remaining: number }[];
+  addPending?: boolean;
 }
 
 export function OrderDetailsModal({
@@ -31,11 +34,18 @@ export function OrderDetailsModal({
   statusPending,
   onCancelOrder,
   cancelPending,
+  onAddItem,
+  availableItems,
+  addPending,
 }: OrderDetailsModalProps) {
   const [editing, setEditing] = useState<{ itemId: string; qty: number } | null>(null);
+  const [addItemId, setAddItemId] = useState<string>("");
+  const [addQty, setAddQty] = useState<number>(1);
 
   const itemCount = order?.items?.length ?? 0;
   const approved = !!order?.clusterApprovedAt && order?.status !== "cancelled";
+  const available = availableItems ?? [];
+  const addTarget = available.find(i => i.id === addItemId) ?? available[0];
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
@@ -136,6 +146,48 @@ export function OrderDetailsModal({
                 </div>
               </div>
             ))
+          )}
+
+          {mode === "branch" && canEdit && onAddItem && (
+            <div className="border-t border-dashed border-gray-200 pt-4 mt-4">
+              <p className="text-sm font-semibold text-gray-700 mb-2">Add Item</p>
+              {available.length === 0 ? (
+                <p className="text-xs text-gray-400">No items available to add.</p>
+              ) : (
+                <div className="flex items-center gap-2">
+                  <select
+                    value={addTarget?.id ?? ""}
+                    onChange={e => { setAddItemId(e.target.value); setAddQty(1); }}
+                    className="flex-1 px-2 py-2 border border-gray-300 rounded-lg text-sm bg-white focus:border-red-500 outline-none"
+                  >
+                    {available.map(i => (
+                      <option key={i.id} value={i.id} disabled={i.threshold > 0 && i.remaining <= 0}>
+                        {i.name}{i.threshold > 0 ? ` (max ${i.remaining} more)` : ""}
+                      </option>
+                    ))}
+                  </select>
+                  <input
+                    type="number"
+                    min={1}
+                    max={addTarget?.threshold ? Math.max(1, addTarget.remaining) : undefined}
+                    value={addQty}
+                    onChange={e => {
+                      const v = Number(e.target.value);
+                      const max = addTarget?.threshold ? Math.max(1, addTarget.remaining) : 999999;
+                      setAddQty(Math.min(Math.max(1, Math.floor(v) || 1), max));
+                    }}
+                    className="w-20 px-2 py-2 border border-gray-300 rounded-lg text-sm"
+                  />
+                  <button
+                    onClick={() => { onAddItem(addTarget.id, addQty); setAddQty(1); }}
+                    disabled={addPending || (addTarget?.threshold ?? 0) > 0 && (addTarget?.remaining ?? 0) <= 0}
+                    className="px-3 py-2 bg-red-600 text-white text-sm rounded-lg hover:bg-red-700 disabled:opacity-50 flex items-center gap-1"
+                  >
+                    {addPending ? <Loader2 className="w-4 h-4 animate-spin" /> : null} Add
+                  </button>
+                </div>
+              )}
+            </div>
           )}
         </div>
 

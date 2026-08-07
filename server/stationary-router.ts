@@ -631,6 +631,61 @@ export const stationaryRouter = createRouter({
       return { success: true };
     }),
 
+  // ---------------- Branch: add an item to a pending order ----------------
+  addMyOrderItem: authedQuery
+    .input(z.object({ orderId: z.string(), itemId: z.string(), quantity: z.number().int().min(1) }))
+    .mutation(async ({ ctx, input }) => {
+      const supabase = getSupabaseAdmin();
+      if (ctx.user.role !== "branch") throw new Error("Only branch users can edit their order");
+      const branchId = getActingBranchId(ctx);
+
+      const { data: order, error: oErr } = await supabase
+        .from("stationary_orders")
+        .select("id, branchId, status")
+        .eq("id", input.orderId)
+        .single();
+      if (oErr || !order) throw new Error("Order not found");
+      if (order.branchId !== branchId) throw new Error("Order does not belong to your branch");
+      if (order.status !== "pending") throw new Error("Order can only be edited while it is pending");
+
+      const { data: item, error: iErr } = await supabase
+        .from("stationary_items")
+        .select("*")
+        .eq("id", input.itemId)
+        .single();
+      if (iErr || !item) throw new Error("Item not found");
+      if (!(item.isActive ?? true)) throw new Error(`Item ${item.name} is not active`);
+
+      const threshold = item.threshold ?? 0;
+      if (threshold > 0) {
+        const { data: existingLines } = await supabase
+          .from("stationary_order_items")
+          .select("itemId, quantity")
+          .eq("orderId", input.orderId);
+        const used = (existingLines ?? []).filter((l) => l.itemId === input.itemId).reduce((s, l) => s + l.quantity, 0);
+        if (used + input.quantity > threshold) {
+          throw new Error(`Quantity exceeds the per-branch limit for ${item.name} (max ${threshold} per window)`);
+        }
+      }
+
+      const unitPrice = Number(item.price ?? 0);
+      const { error: insErr } = await supabase
+        .from("stationary_order_items")
+        .insert({ orderId: input.orderId, itemId: input.itemId, quantity: input.quantity, unitPrice, lineTotal: unitPrice * input.quantity });
+      if (insErr) throw new Error(insErr.message);
+
+      await createAuditLog({
+        userId: ctx.user.id,
+        userType: "branch",
+        userName: ctx.user.name,
+        action: "add_stationary_order_item",
+        entityType: "stationaryOrder",
+        entityId: input.orderId,
+        details: { itemId: input.itemId, itemName: item.name, quantity: input.quantity },
+      });
+      return { success: true };
+    }),
+
   // ---------------- Branch: cancel their own pending order ----------------
   cancelOrder: authedQuery
     .input(z.object({ orderId: z.string() }))
