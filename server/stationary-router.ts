@@ -755,6 +755,10 @@ export const stationaryRouter = createRouter({
           .from("stationary_order_items")
           .select("itemId, quantity")
           .eq("orderId", input.orderId);
+        const alreadyInOrder = (existingLines ?? []).some((l) => l.itemId === input.itemId);
+        if (alreadyInOrder) {
+          throw new Error(`${item.name} is already in this order. You can change its quantity from the item list above.`);
+        }
         const used = (existingLines ?? []).filter((l) => l.itemId === input.itemId).reduce((s, l) => s + l.quantity, 0);
         if (used + input.quantity > threshold) {
           throw new Error(`Quantity exceeds the per-branch limit for ${item.name} (max ${threshold} per window)`);

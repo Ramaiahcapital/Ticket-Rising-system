@@ -44,7 +44,8 @@ export function OrderDetailsModal({
 
   const itemCount = order?.items?.length ?? 0;
   const approved = !!order?.clusterApprovedAt && order?.status !== "cancelled";
-  const available = availableItems ?? [];
+  const orderedItemIds = new Set((order?.items ?? []).map((li: any) => li.itemId));
+  const available = (availableItems ?? []).filter(i => !orderedItemIds.has(i.id));
   const addTarget = available.find(i => i.id === addItemId) ?? available[0];
 
   return (
