@@ -17,6 +17,8 @@ create table if not exists public.profiles (
   "branchCode" text,
   "contactPerson" text,
   "branchRole" text,
+  -- Sub-admin department bucket = a branch_roles.name; NULL = main admin.
+  "adminRole" text,
   mobile text,
   address text,
   "isActive" boolean not null default true,

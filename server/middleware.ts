@@ -41,3 +41,20 @@ function requireRole(role: string) {
 export const authedQuery = t.procedure.use(requireAuth);
 export const adminQuery = authedQuery.use(requireRole("admin"));
 export const clusterQuery = authedQuery.use(requireRole("cluster"));
+
+// Main admins (role "admin", no adminRole bucket) only.
+// Sub-admins are still type "admin" but are scoped to their bucket.
+const requireMainAdmin = t.middleware(async (opts) => {
+  const { ctx, next } = opts;
+
+  if (!ctx.user || ctx.user.type !== "admin" || !!ctx.user.adminRole) {
+    throw new TRPCError({
+      code: "FORBIDDEN",
+      message: ErrorMessages.insufficientRole,
+    });
+  }
+
+  return next({ ctx: { ...ctx, user: ctx.user } });
+});
+
+export const mainAdminQuery = adminQuery.use(requireMainAdmin);

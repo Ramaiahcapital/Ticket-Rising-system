@@ -5,6 +5,7 @@ import type {
   Profile,
   Role,
   TicketTimelineRow,
+  UnifiedUser,
 } from "./db-types.js";
 
 // Generate next ticket number based on format setting
@@ -165,6 +166,72 @@ export async function notifyBranchUsers(branchId: string, title: string, message
   if (!users?.length) return;
   await supabase.from("notifications").insert(
     (users as { id: string }[]).map((u) => ({ recipientId: u.id, recipientType: "branch", title, message, type }))
+  );
+}
+
+/**
+ * Ticket scope for a sub-admin. Returns a branchRole to filter tickets by,
+ * or null when the user is a main admin (sees everything) or not an admin.
+ */
+export function getTicketScopeFilter(user?: UnifiedUser): { branchRole: string } | null {
+  if (user?.type === "admin" && user.adminRole) {
+    return { branchRole: user.adminRole };
+  }
+  return null;
+}
+
+/** Whether an admin user is scoped to a ticket (matches their bucket or is main admin). */
+export function canAdminAccessTicket(user: UnifiedUser | undefined, ticketBranchRole: string | null): boolean {
+  if (!user || user.type !== "admin") return false;
+  if (!user.adminRole) return true;
+  return ticketBranchRole === user.adminRole;
+}
+
+/**
+ * Admins who should receive role-specific notifications/emails for a ticket:
+ * the sub-admins in the matching bucket plus every main admin.
+ */
+export async function getRoleAdminRecipients(
+  role: string | null,
+  opts: { excludeId?: string; activeOnly?: boolean } = {}
+): Promise<Profile[]> {
+  const supabase = getSupabaseAdmin();
+  let query = supabase.from("profiles").select("*").eq("role", "admin");
+  if (opts.activeOnly) query = query.eq("isActive", true);
+
+  const { data } = await query;
+  const admins = (data as Profile[] | null) ?? [];
+
+  return admins.filter((a) => {
+    if (opts.excludeId && a.id === opts.excludeId) return false;
+    // Sub-admin buckets matching the ticket's branch role, plus all main admins.
+    return !a.adminRole || a.adminRole === role;
+  });
+}
+
+/** Batch-notify the admins relevant to a ticket's branch role. */
+export async function notifyRoleAdmins(
+  role: string | null,
+  params: {
+    title: string;
+    message: string;
+    type: NotificationRow["type"];
+    ticketId?: string;
+    excludeId?: string;
+  }
+) {
+  const recipients = await getRoleAdminRecipients(role, { excludeId: params.excludeId });
+  if (!recipients.length) return;
+  const supabase = getSupabaseAdmin();
+  await supabase.from("notifications").insert(
+    recipients.map((r) => ({
+      recipientId: r.id,
+      recipientType: "admin" as const,
+      title: params.title,
+      message: params.message,
+      type: params.type,
+      ticketId: params.ticketId ?? null,
+    }))
   );
 }
 

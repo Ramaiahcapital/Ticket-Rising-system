@@ -21,9 +21,10 @@ import ClusterOrders from "@/pages/ClusterOrders";
 import TicketFormConfig from "@/pages/TicketFormConfig";
 import RolesManagement from "@/pages/RolesManagement";
 import EmailConnectPage from "@/pages/EmailConnectPage";
+import AdminUsersPage from "@/pages/AdminUsersPage";
 import NotFound from "@/pages/NotFound";
 
-function ProtectedRoute({ children, requireAdmin = false }: { children: React.ReactNode; requireAdmin?: boolean }) {
+function ProtectedRoute({ children, requireAdmin = false, requireMainAdmin = false }: { children: React.ReactNode; requireAdmin?: boolean; requireMainAdmin?: boolean }) {
   const { user, isLoading } = useAuth();
 
   if (isLoading) {
@@ -38,7 +39,11 @@ function ProtectedRoute({ children, requireAdmin = false }: { children: React.Re
     return <Navigate to="/login" replace />;
   }
 
-  if (requireAdmin && user.type !== "admin") {
+  if (requireMainAdmin) {
+    if (user.type !== "admin" || user.adminRole) {
+      return <Navigate to="/" replace />;
+    }
+  } else if (requireAdmin && user.type !== "admin") {
     return <Navigate to="/" replace />;
   }
 
@@ -84,7 +89,7 @@ export default function App() {
       <Route
         path="/statuses"
         element={
-          <ProtectedRoute requireAdmin>
+          <ProtectedRoute requireMainAdmin>
             <StatusManagement />
           </ProtectedRoute>
         }
@@ -92,7 +97,7 @@ export default function App() {
       <Route
         path="/categories"
         element={
-          <ProtectedRoute requireAdmin>
+          <ProtectedRoute requireMainAdmin>
             <CategoryManagement />
           </ProtectedRoute>
         }
@@ -100,7 +105,7 @@ export default function App() {
       <Route
         path="/settings"
         element={
-          <ProtectedRoute requireAdmin>
+          <ProtectedRoute requireMainAdmin>
             <SettingsPage />
           </ProtectedRoute>
         }
@@ -108,7 +113,7 @@ export default function App() {
       <Route
         path="/audit-log"
         element={
-          <ProtectedRoute requireAdmin>
+          <ProtectedRoute requireMainAdmin>
             <AuditLogPage />
           </ProtectedRoute>
         }
@@ -124,7 +129,7 @@ export default function App() {
       <Route
         path="/stationary/admin"
         element={
-          <ProtectedRoute requireAdmin>
+          <ProtectedRoute requireMainAdmin>
             <StationaryAdmin />
           </ProtectedRoute>
         }
@@ -140,7 +145,7 @@ export default function App() {
       <Route
         path="/branches"
         element={
-          <ProtectedRoute requireAdmin>
+          <ProtectedRoute requireMainAdmin>
             <BranchesPage />
           </ProtectedRoute>
         }
@@ -148,7 +153,7 @@ export default function App() {
       <Route
         path="/ticket-form-config"
         element={
-          <ProtectedRoute requireAdmin>
+          <ProtectedRoute requireMainAdmin>
             <TicketFormConfig />
           </ProtectedRoute>
         }
@@ -156,7 +161,7 @@ export default function App() {
       <Route
         path="/roles"
         element={
-          <ProtectedRoute requireAdmin>
+          <ProtectedRoute requireMainAdmin>
             <RolesManagement />
           </ProtectedRoute>
         }
@@ -164,8 +169,16 @@ export default function App() {
       <Route
         path="/clusters"
         element={
-          <ProtectedRoute requireAdmin>
+          <ProtectedRoute requireMainAdmin>
             <ClusterManagement />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/admin-users"
+        element={
+          <ProtectedRoute requireMainAdmin>
+            <AdminUsersPage />
           </ProtectedRoute>
         }
       />

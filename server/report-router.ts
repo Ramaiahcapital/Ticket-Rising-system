@@ -2,6 +2,7 @@ import { z } from "zod";
 import { createRouter, adminQuery } from "./middleware.js";
 import { getSupabaseAdmin } from "./lib/supabase.js";
 import type { TicketStatusRow, TicketPriorityRow, TicketCategoryRow, TicketRow, Profile } from "./lib/db-types.js";
+import { getTicketScopeFilter } from "./lib/utils.js";
 
 export const reportRouter = createRouter({
   generate: adminQuery
@@ -15,14 +16,19 @@ export const reportRouter = createRouter({
         statusIds: z.array(z.string()).optional(),
       })
     )
-    .query(async ({ input }) => {
+    .query(async ({ ctx, input }) => {
       const supabase = getSupabaseAdmin();
+      const scope = getTicketScopeFilter(ctx.user);
 
       let query = supabase
         .from("tickets")
         .select("*")
         .gte("createdAt", input.dateFrom)
         .lte("createdAt", input.dateTo);
+
+      if (scope) {
+        query = query.eq("branchRole", scope.branchRole);
+      }
 
       if (input.branchIds && input.branchIds.length > 0) {
         query = query.in("branchId", input.branchIds);

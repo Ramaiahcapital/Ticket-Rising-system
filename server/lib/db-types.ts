@@ -35,6 +35,8 @@ export type Profile = {
   branchCode: string | null;
   clusterId: string | null;
   branchRole: BranchRole | null;
+  /** Sub-admin department bucket = a branch_roles.name. NULL = main admin. */
+  adminRole: BranchRole | null;
   branchId: string | null;
   contactPerson: string | null;
   mobile: string | null;
@@ -280,6 +282,8 @@ export type UnifiedUser =
       name: string | null;
       email: string | null;
       role: "admin";
+      /** Sub-admin department bucket = a branch_roles.name; null = main admin. */
+      adminRole: BranchRole | null;
       avatar?: string | null;
     }
   | {
@@ -313,6 +317,7 @@ export function mapProfileToUnifiedUser(p: Profile): UnifiedUser {
       name: p.name,
       email: p.email,
       role: "admin",
+      adminRole: p.adminRole,
       avatar: p.avatar,
     };
   }

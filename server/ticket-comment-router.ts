@@ -1,7 +1,8 @@
 import { z } from "zod";
 import { createRouter, authedQuery } from "./middleware.js";
 import { getSupabaseAdmin } from "./lib/supabase.js";
-import { createTimelineEntry, createNotification, notifyAllAdmins } from "./lib/utils.js";
+import { createTimelineEntry, createNotification, canAdminAccessTicket, getRoleAdminRecipients, notifyRoleAdmins } from "./lib/utils.js";
+import { sendEmailFromUser } from "./email-service.js";
 
 function sanitizeHtml(html: string): string {
   return html
@@ -41,6 +42,9 @@ export const ticketCommentRouter = createRouter({
         .maybeSingle();
       if (!ticket) throw new Error("Ticket not found");
       if (ctx.user.type === "branch" && ticket.branchId !== ctx.user.id) {
+        throw new Error("Access denied");
+      }
+      if (ctx.user.type === "admin" && !canAdminAccessTicket(ctx.user, ticket.branchRole)) {
         throw new Error("Access denied");
       }
 
@@ -90,6 +94,9 @@ export const ticketCommentRouter = createRouter({
       if (ctx.user.type === "branch" && ticket.branchId !== ctx.user.id) {
         throw new Error("Access denied");
       }
+      if (ctx.user.type === "admin" && !canAdminAccessTicket(ctx.user, ticket.branchRole)) {
+        throw new Error("Access denied");
+      }
 
       if (ctx.user.type === "branch" && input.isInternal) {
         throw new Error("Branch users cannot create internal notes");
@@ -126,13 +133,40 @@ export const ticketCommentRouter = createRouter({
         description: `Comment added by ${actorName}`,
       });
 
+      const plainText = htmlToPlainText(input.contentHtml ?? input.content) || input.content;
+      const emailBody = (from: string) =>
+        `<div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;">
+          <h2 style="color:#DC2626;">New reply on ticket ${ticket.ticketNumber}</h2>
+          <table style="width:100%;border-collapse:collapse;">
+            <tr><td style="padding:8px;font-weight:bold;border-bottom:1px solid #eee;">Ticket</td><td style="padding:8px;border-bottom:1px solid #eee;">${ticket.ticketNumber} — ${ticket.subject}</td></tr>
+            <tr><td style="padding:8px;font-weight:bold;border-bottom:1px solid #eee;">From</td><td style="padding:8px;border-bottom:1px solid #eee;">${from}</td></tr>
+            <tr><td style="padding:8px;font-weight:bold;border-bottom:1px solid #eee;">Reply</td><td style="padding:8px;border-bottom:1px solid #eee;">${plainText.replace(/\n/g, "<br/>")}</td></tr>
+          </table>
+          <p style="margin-top:16px;color:#666;">Ramaiah Capital Ticket Management System</p>
+        </div>`;
+
       if (ctx.user.type === "branch") {
-        await notifyAllAdmins({
+        await notifyRoleAdmins(ticket.branchRole, {
           title: "New Comment",
           message: `New comment on ticket ${ticket.ticketNumber} from ${actorName}`,
           type: "comment_added",
           ticketId: input.ticketId,
         });
+
+        // Email the admins relevant to this ticket's department
+        try {
+          const admins = await getRoleAdminRecipients(ticket.branchRole, { activeOnly: true });
+          for (const admin of admins) {
+            if (admin.email) {
+              await sendEmailFromUser(
+                ctx.user.id,
+                admin.email,
+                `Re: ${ticket.ticketNumber} - ${ticket.subject}`,
+                emailBody(actorName)
+              );
+            }
+          }
+        } catch (e) { console.error("Reply email failed:", e); }
       } else {
         await createNotification({
           recipientId: ticket.branchId,
@@ -142,6 +176,41 @@ export const ticketCommentRouter = createRouter({
           type: "comment_added",
           ticketId: input.ticketId,
         });
+        await notifyRoleAdmins(ticket.branchRole, {
+          title: "New Comment",
+          message: `New comment on ticket ${ticket.ticketNumber} from ${actorName}`,
+          type: "comment_added",
+          ticketId: input.ticketId,
+          excludeId: ctx.user.id,
+        });
+
+        // Email the branch user and the other admins in the matching bucket
+        try {
+          const { data: branchProfile } = await supabase
+            .from("profiles")
+            .select("email, branchName")
+            .eq("id", ticket.branchId)
+            .maybeSingle();
+          if (branchProfile?.email) {
+            await sendEmailFromUser(
+              ctx.user.id,
+              branchProfile.email,
+              `Re: ${ticket.ticketNumber} - ${ticket.subject}`,
+              emailBody(actorName)
+            );
+          }
+          const admins = await getRoleAdminRecipients(ticket.branchRole, { activeOnly: true, excludeId: ctx.user.id });
+          for (const admin of admins) {
+            if (admin.email) {
+              await sendEmailFromUser(
+                ctx.user.id,
+                admin.email,
+                `Re: ${ticket.ticketNumber} - ${ticket.subject}`,
+                emailBody(actorName)
+              );
+            }
+          }
+        } catch (e) { console.error("Reply email failed:", e); }
       }
 
       return { id: commentId, content: input.content, contentHtml: input.contentHtml ?? null };

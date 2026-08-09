@@ -237,6 +237,9 @@ export default function TicketDetail() {
                 >
                   {ticket.status?.name || "Unknown"}
                 </span>
+                {ticket.createdAt && (
+                  <span className="text-[11px] text-gray-400">created {new Date(ticket.createdAt).toLocaleDateString()} {new Date(ticket.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>
+                )}
                 {(ticket as any).statusChangedAt && (
                   <span className="text-[11px] text-gray-400">updated {new Date((ticket as any).statusChangedAt).toLocaleDateString()} {new Date((ticket as any).statusChangedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>
                 )}
@@ -605,12 +608,12 @@ export default function TicketDetail() {
                 <div className="flex items-center gap-2">
                   <Calendar className="w-4 h-4 text-gray-400" />
                   <span className="text-gray-500">Created:</span>
-                  <span className="ml-auto">{new Date(ticket.createdAt ?? new Date()).toLocaleDateString()}</span>
+                  <span className="ml-auto">{new Date(ticket.createdAt ?? new Date()).toLocaleDateString()} {new Date(ticket.createdAt ?? new Date()).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>
                 </div>
                 <div className="flex items-center gap-2 mt-1">
                   <Clock className="w-4 h-4 text-gray-400" />
                   <span className="text-gray-500">Updated:</span>
-                  <span className="ml-auto">{new Date(ticket.updatedAt ?? new Date()).toLocaleDateString()}</span>
+                  <span className="ml-auto">{new Date(ticket.updatedAt ?? new Date()).toLocaleDateString()} {new Date(ticket.updatedAt ?? new Date()).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>
                 </div>
                 {(ticket as any).statusChangedAt && (
                   <div className="flex items-center gap-2 mt-1">

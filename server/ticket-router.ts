@@ -6,9 +6,12 @@ import {
   generateTicketNumber,
   createTimelineEntry,
   createNotification,
-  notifyAllAdmins,
   createAuditLog,
   requireRoleExists,
+  getTicketScopeFilter,
+  canAdminAccessTicket,
+  getRoleAdminRecipients,
+  notifyRoleAdmins,
 } from "./lib/utils.js";
 import { sendEmailFromUser } from "./email-service.js";
 import type { TrpcContext } from "./context.js";
@@ -52,6 +55,9 @@ export const ticketRouter = createRouter({
       } else if (params.branchId) {
         query = query.eq("branchId", params.branchId);
       }
+
+      const scope = getTicketScopeFilter(ctx.user);
+      if (scope) query = query.eq("branchRole", scope.branchRole);
 
       if (params.search) {
         query = query.or(
@@ -107,7 +113,7 @@ export const ticketRouter = createRouter({
       };
     }),
 
-  departmentCounts: adminQuery.query(async () => {
+  departmentCounts: adminQuery.query(async ({ ctx }) => {
     const supabase = getSupabaseAdmin();
     const { data: openStatus } = await supabase
       .from("ticket_statuses")
@@ -117,6 +123,8 @@ export const ticketRouter = createRouter({
 
     let query = supabase.from("tickets").select("branchRole");
     if (openStatus) query = query.eq("statusId", openStatus.id);
+    const scope = getTicketScopeFilter(ctx.user);
+    if (scope) query = query.eq("branchRole", scope.branchRole);
     const { data: tickets } = await query;
 
     const { data: roles } = await supabase
@@ -130,11 +138,15 @@ export const ticketRouter = createRouter({
       const role = (t as any).branchRole as string | undefined;
       if (role && role in counts) counts[role]++;
     }
-    return (roles ?? []).map((r) => ({
+    let result = (roles ?? []).map((r) => ({
       name: r.name,
       count: counts[r.name] ?? 0,
       color: r.color,
     }));
+    if (scope) {
+      result = result.filter((r) => r.name === scope.branchRole);
+    }
+    return result;
   }),
 
   listExport: adminQuery
@@ -148,11 +160,14 @@ export const ticketRouter = createRouter({
         dateTo: z.string().optional(),
       }).optional()
     )
-    .query(async ({ input }) => {
+    .query(async ({ ctx, input }) => {
       const supabase = getSupabaseAdmin();
       const params = input || {};
 
       let query = supabase.from("tickets").select("*", { count: "exact" });
+
+      const scope = getTicketScopeFilter(ctx.user);
+      if (scope) query = query.eq("branchRole", scope.branchRole);
 
       if (params.search) {
         query = query.or(
@@ -196,6 +211,9 @@ export const ticketRouter = createRouter({
       if (ctx.user.type === "branch" && ticket.branchId !== ctx.user.id) {
         throw new Error("Access denied");
       }
+      if (ctx.user.type === "admin" && !canAdminAccessTicket(ctx.user, ticket.branchRole)) {
+        throw new Error("Access denied");
+      }
       return await enrichTicket(supabase, ticket);
     }),
 
@@ -210,6 +228,9 @@ export const ticketRouter = createRouter({
         .maybeSingle();
       if (!ticket) throw new Error("Ticket not found");
       if (ctx.user.type === "branch" && ticket.branchId !== ctx.user.id) {
+        throw new Error("Access denied");
+      }
+      if (ctx.user.type === "admin" && !canAdminAccessTicket(ctx.user, ticket.branchRole)) {
         throw new Error("Access denied");
       }
       return await enrichTicket(supabase, ticket);
@@ -257,6 +278,8 @@ export const ticketRouter = createRouter({
         .eq("id", ctx.user.id)
         .maybeSingle();
 
+      const ticketRole = input.branchRole ?? creator?.branchRole ?? null;
+
       const { data, error } = await supabase
         .from("tickets")
         .insert({
@@ -268,7 +291,7 @@ export const ticketRouter = createRouter({
           priorityId: input.priorityId ?? null,
           statusId: defaultStatuses?.[0]?.id ?? null,
           department: input.department ?? null,
-          branchRole: input.branchRole ?? creator?.branchRole ?? null,
+          branchRole: ticketRole,
           branchId: ctx.user.id,
           createdBy: ctx.user.id,
           customFields: input.customFields ?? {},
@@ -300,27 +323,23 @@ export const ticketRouter = createRouter({
         details: { ticketNumber, subject },
       });
 
-      await notifyAllAdmins({
+      await notifyRoleAdmins(ticketRole, {
         title: "New Ticket Created",
         message: `Ticket ${ticketNumber} - ${subject} was created by ${actorName}`,
         type: "ticket_created",
         ticketId,
       });
 
-      // Send email from branch user to all admins
+      // Send email from branch user to the admins relevant to this ticket's department
       try {
         const supabase = getSupabaseAdmin();
-        const { data: admins } = await supabase
-          .from("profiles")
-          .select("email")
-          .eq("role", "admin")
-          .eq("isActive", true);
+        const admins = await getRoleAdminRecipients(ticketRole, { activeOnly: true });
         const { data: sender } = await supabase
           .from("profiles")
           .select("branchName, email")
           .eq("id", ctx.user.id)
           .maybeSingle();
-        if (admins?.length && sender?.email) {
+        if (admins.length && sender?.email) {
           const branchLabel = sender.branchName || "Branch";
           for (const admin of admins) {
             if (admin.email) {
@@ -369,6 +388,9 @@ export const ticketRouter = createRouter({
       if (ctx.user.type === "branch" && ticket.branchId !== ctx.user.id) {
         throw new Error("Access denied");
       }
+      if (ctx.user.type === "admin" && !canAdminAccessTicket(ctx.user, ticket.branchRole)) {
+        throw new Error("Access denied");
+      }
 
       const set: Partial<TicketRow> = { updatedAt: new Date().toISOString() };
       if (updates.subject !== undefined) set.subject = updates.subject;
@@ -407,6 +429,9 @@ export const ticketRouter = createRouter({
       const { data: ticket } = await supabase.from("tickets").select("*").eq("id", input.ticketId).maybeSingle();
       if (!ticket) throw new Error("Ticket not found");
       if (ctx.user.type === "branch" && ticket.branchId !== ctx.user.id) {
+        throw new Error("Access denied");
+      }
+      if (ctx.user.type === "admin" && !canAdminAccessTicket(ctx.user, ticket.branchRole)) {
         throw new Error("Access denied");
       }
 
@@ -475,7 +500,7 @@ export const ticketRouter = createRouter({
       });
 
       if (ctx.user.type === "branch") {
-        await notifyAllAdmins({
+        await notifyRoleAdmins(ticket.branchRole, {
           title: "Ticket Status Updated",
           message: `Ticket ${ticket.ticketNumber} status changed to ${newStatus?.name} by ${actorName}`,
           type: "status_changed",
@@ -507,6 +532,9 @@ export const ticketRouter = createRouter({
 
       const { data: ticket } = await supabase.from("tickets").select("*").eq("id", input.ticketId).maybeSingle();
       if (!ticket) throw new Error("Ticket not found");
+      if (!canAdminAccessTicket(ctx.user, ticket.branchRole)) {
+        throw new Error("Access denied");
+      }
 
       const { data: oldAssignee } = ticket.assignedTo
         ? await supabase.from("profiles").select("*").eq("id", ticket.assignedTo).maybeSingle()
@@ -548,6 +576,10 @@ export const ticketRouter = createRouter({
     .input(z.object({ id: z.string() }))
     .mutation(async ({ ctx, input }) => {
       const supabase = getSupabaseAdmin();
+      const { data: ticket } = await supabase.from("tickets").select("id, branchRole").eq("id", input.id).maybeSingle();
+      if (ticket && !canAdminAccessTicket(ctx.user, ticket.branchRole)) {
+        throw new Error("Access denied");
+      }
       const { error } = await supabase
         .from("tickets")
         .update({ isActive: false, updatedAt: new Date().toISOString() })
@@ -576,6 +608,10 @@ export const ticketRouter = createRouter({
       const supabase = getSupabaseAdmin();
 
       for (const ticketId of input.ticketIds) {
+        const { data: t } = await supabase.from("tickets").select("branchRole").eq("id", ticketId).maybeSingle();
+        if (t && !canAdminAccessTicket(ctx.user, t.branchRole)) {
+          throw new Error("Access denied");
+        }
         const { error } = await supabase
           .from("tickets")
           .update({ statusId: input.statusId, updatedAt: new Date().toISOString() })
@@ -606,6 +642,10 @@ export const ticketRouter = createRouter({
       const supabase = getSupabaseAdmin();
 
       for (const ticketId of input.ticketIds) {
+        const { data: t } = await supabase.from("tickets").select("branchRole").eq("id", ticketId).maybeSingle();
+        if (t && !canAdminAccessTicket(ctx.user, t.branchRole)) {
+          throw new Error("Access denied");
+        }
         const { error } = await supabase
           .from("tickets")
           .update({ assignedTo: input.assignedTo, updatedAt: new Date().toISOString() })
@@ -737,8 +777,12 @@ export const ticketRouter = createRouter({
   /** Delete all attachments for a ticket (storage cleanup). */
   deleteTicketFiles: adminQuery
     .input(z.object({ ticketId: z.string() }))
-    .mutation(async ({ input }) => {
+    .mutation(async ({ ctx, input }) => {
       const supabase = getSupabaseAdmin();
+      const { data: t } = await supabase.from("tickets").select("branchRole").eq("id", input.ticketId).maybeSingle();
+      if (t && !canAdminAccessTicket(ctx.user, t.branchRole)) {
+        throw new Error("Access denied");
+      }
       const { data: attachments } = await supabase
         .from("ticket_attachments")
         .select("filePath")

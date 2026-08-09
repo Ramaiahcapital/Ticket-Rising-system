@@ -18,6 +18,7 @@ import {
   Building2,
   Layers,
   Mail,
+  UserCog,
 } from "lucide-react";
 
 interface SidebarProps {
@@ -49,7 +50,7 @@ const settingsChildren: NavItem[] = [
   { label: "Branches", icon: Building2, path: "/branches" },
   { label: "Clusters", icon: Layers, path: "/clusters" },
   { label: "Status Management", icon: Tags, path: "/statuses" },
-  { label: "Stationary", icon: Package, path: "/stationary/admin" },
+  { label: "Admin Users", icon: UserCog, path: "/admin-users" },
 ];
 
 export default function Sidebar({ isAdmin, mobile, onClose }: SidebarProps) {
@@ -64,11 +65,12 @@ export default function Sidebar({ isAdmin, mobile, onClose }: SidebarProps) {
       location.pathname === "/categories" ||
       location.pathname === "/ticket-form-config" ||
       location.pathname === "/roles" ||
-      location.pathname === "/stationary/admin" ||
       location.pathname === "/clusters"
   );
 
   const isSettingsChild = settingsChildren.some((c) => c.path === location.pathname);
+
+  const isMainAdmin = user?.type === "admin" && !user.adminRole;
 
   const go = (path: string) => {
     navigate(path);
@@ -121,15 +123,23 @@ export default function Sidebar({ isAdmin, mobile, onClose }: SidebarProps) {
             <button onClick={() => go("/tickets")} className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all ${location.pathname === "/tickets" ? "bg-red-50 text-red-600 border-l-[3px] border-red-600" : "text-gray-600 hover:bg-gray-50 hover:text-gray-900"}`}>
               <Ticket className={`w-5 h-5 ${location.pathname === "/tickets" ? "text-red-600" : "text-gray-400"}`} /> Tickets
             </button>
-            <button onClick={() => go("/audit-log")} className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all ${location.pathname === "/audit-log" ? "bg-red-50 text-red-600 border-l-[3px] border-red-600" : "text-gray-600 hover:bg-gray-50 hover:text-gray-900"}`}>
-              <ClipboardList className={`w-5 h-5 ${location.pathname === "/audit-log" ? "text-red-600" : "text-gray-400"}`} /> Audit Log
-            </button>
+            {isMainAdmin && (
+              <button onClick={() => go("/audit-log")} className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all ${location.pathname === "/audit-log" ? "bg-red-50 text-red-600 border-l-[3px] border-red-600" : "text-gray-600 hover:bg-gray-50 hover:text-gray-900"}`}>
+                <ClipboardList className={`w-5 h-5 ${location.pathname === "/audit-log" ? "text-red-600" : "text-gray-400"}`} /> Audit Log
+              </button>
+            )}
             <button onClick={() => go("/reports")} className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all ${location.pathname === "/reports" ? "bg-red-50 text-red-600 border-l-[3px] border-red-600" : "text-gray-600 hover:bg-gray-50 hover:text-gray-900"}`}>
               <BarChart3 className={`w-5 h-5 ${location.pathname === "/reports" ? "text-red-600" : "text-gray-400"}`} /> Reports
             </button>
+            {isMainAdmin && (
+              <button onClick={() => go("/stationary/admin")} className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all ${location.pathname === "/stationary/admin" ? "bg-red-50 text-red-600 border-l-[3px] border-red-600" : "text-gray-600 hover:bg-gray-50 hover:text-gray-900"}`}>
+                <Package className={`w-5 h-5 ${location.pathname === "/stationary/admin" ? "text-red-600" : "text-gray-400"}`} /> Stationary
+              </button>
+            )}
 
-            {/* Settings (expandable) */}
-            <div>
+            {/* Settings (expandable) — main admins only */}
+            {isMainAdmin && (
+              <div>
               <button
                 onClick={() => setSettingsOpen((o) => !o)}
                 className={`w-full flex items-center justify-between gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all ${
@@ -163,6 +173,7 @@ export default function Sidebar({ isAdmin, mobile, onClose }: SidebarProps) {
                 </div>
               )}
             </div>
+            )}
           </>
         ) : isCluster ? (
           clusterNavItems.map((item) => {
@@ -226,7 +237,14 @@ export default function Sidebar({ isAdmin, mobile, onClose }: SidebarProps) {
           ) : (
             <>
               <p className="text-sm font-medium text-gray-800 truncate">{user?.name || "Admin"}</p>
-              <p className="text-xs text-gray-500 capitalize">{user?.type || "admin"} User</p>
+              {user?.type === "admin" && user.adminRole ? (
+                <div className="flex items-center gap-2 mt-1">
+                  <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-blue-50 text-blue-700">{user.adminRole}</span>
+                  <span className="text-[10px] text-gray-400 truncate">Sub-Admin</span>
+                </div>
+              ) : (
+                <p className="text-xs text-gray-500 capitalize">{user?.type || "admin"} User</p>
+              )}
             </>
           )}
         </div>

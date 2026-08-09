@@ -9,6 +9,8 @@ export type UnifiedUser =
       name: string | null;
       email: string | null;
       role: "admin";
+      /** Sub-admin department bucket; null = main admin (sees everything). */
+      adminRole: string | null;
       avatar?: string | null;
     }
   | {
@@ -67,6 +69,10 @@ export function useAuth() {
       user: (user as UnifiedUser) ?? null,
       isAuthenticated: !!user,
       isAdmin: user?.type === "admin",
+      /** Main admin (no sub-admin bucket) — has access to all admin features. */
+      isMainAdmin: user?.type === "admin" && !user.adminRole,
+      /** Sub-admin department bucket, or null for main admins / non-admins. */
+      adminRole: user?.type === "admin" ? user.adminRole : null,
       isBranch: user?.type === "branch",
       isCluster: user?.type === "cluster",
       isLoading: isLoading || logoutMutation.isPending,

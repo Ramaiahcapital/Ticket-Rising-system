@@ -114,6 +114,7 @@ export const branchRoleRouter = createRouter({
       // Propagate a rename to everywhere the role name is referenced
       if (updates.name && updates.name !== role.name) {
         await supabase.from("profiles").update({ branchRole: updates.name }).eq("branchRole", role.name);
+        await supabase.from("profiles").update({ adminRole: updates.name }).eq("adminRole", role.name);
         await supabase.from("tickets").update({ branchRole: updates.name }).eq("branchRole", role.name);
         await supabase.from("ticket_form_config").update({ role: updates.name }).eq("role", role.name);
 
@@ -179,16 +180,21 @@ export const branchRoleRouter = createRouter({
         .select("*", { count: "exact", head: true })
         .eq("branchRole", role.name)
         .eq("role", "branch");
+      const { count: subAdminCount } = await supabase
+        .from("profiles")
+        .select("*", { count: "exact", head: true })
+        .eq("adminRole", role.name)
+        .eq("role", "admin");
       const { count: ticketCount } = await supabase
         .from("tickets")
         .select("*", { count: "exact", head: true })
         .eq("branchRole", role.name);
 
-      // Users and tickets cannot be reassigned automatically, so block deletion.
+      // Users, sub-admins and tickets cannot be reassigned automatically, so block deletion.
       // Form configs are admin drafts and are removed automatically.
-      if ((userCount ?? 0) > 0 || (ticketCount ?? 0) > 0) {
+      if ((userCount ?? 0) > 0 || (subAdminCount ?? 0) > 0 || (ticketCount ?? 0) > 0) {
         throw new Error(
-          `Cannot delete role "${role.name}" — still used by ${userCount ?? 0} user(s) and ${ticketCount ?? 0} ticket(s). Deactivate it instead or reassign those first.`
+          `Cannot delete role "${role.name}" — still used by ${userCount ?? 0} branch user(s), ${subAdminCount ?? 0} sub-admin(s) and ${ticketCount ?? 0} ticket(s). Deactivate it instead or reassign those first.`
         );
       }
 

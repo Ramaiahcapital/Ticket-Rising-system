@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { createRouter, authedQuery } from "./middleware.js";
 import { getSupabaseAdmin } from "./lib/supabase.js";
+import { canAdminAccessTicket } from "./lib/utils.js";
 
 export const ticketTimelineRouter = createRouter({
   list: authedQuery
@@ -16,6 +17,9 @@ export const ticketTimelineRouter = createRouter({
         .maybeSingle();
       if (!ticket) throw new Error("Ticket not found");
       if (ctx.user.type === "branch" && ticket.branchId !== ctx.user.id) {
+        throw new Error("Access denied");
+      }
+      if (ctx.user.type === "admin" && !canAdminAccessTicket(ctx.user, ticket.branchRole)) {
         throw new Error("Access denied");
       }
 

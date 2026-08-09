@@ -1,5 +1,6 @@
 import { useNavigate } from "react-router";
 import { trpc } from "@/providers/trpc";
+import { useAuth } from "@/hooks/useAuth";
 import {
   Ticket, Users, CheckCircle,
   UserPlus, FileBarChart,
@@ -11,6 +12,7 @@ import {
 
 export default function AdminDashboard() {
   const navigate = useNavigate();
+  const { isMainAdmin, user } = useAuth();
   const { data: stats, isLoading } = trpc.dashboard.adminStats.useQuery();
 
   if (isLoading) {
@@ -41,16 +43,22 @@ export default function AdminDashboard() {
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-gray-800">Dashboard</h1>
-          <p className="text-sm text-gray-500 mt-1">Overview of your ticket management system</p>
+          <p className="text-sm text-gray-500 mt-1">
+            {user?.type === "admin" && user.adminRole
+              ? `Overview of ${user.adminRole} tickets in your system`
+              : "Overview of your ticket management system"}
+          </p>
         </div>
         <div className="flex gap-2">
-          <button
-            onClick={() => navigate("/branches")}
-            className="flex items-center gap-2 px-4 py-2 bg-white border border-gray-300 hover:bg-gray-50 text-gray-700 text-sm font-medium rounded-lg transition-colors"
-          >
-            <UserPlus className="w-4 h-4" />
-            Branches & Users
-          </button>
+          {isMainAdmin && (
+            <button
+              onClick={() => navigate("/branches")}
+              className="flex items-center gap-2 px-4 py-2 bg-white border border-gray-300 hover:bg-gray-50 text-gray-700 text-sm font-medium rounded-lg transition-colors"
+            >
+              <UserPlus className="w-4 h-4" />
+              Branches & Users
+            </button>
+          )}
           <button
             onClick={() => navigate("/reports")}
             className="flex items-center gap-2 px-4 py-2 bg-white border border-gray-300 hover:bg-gray-50 text-gray-700 text-sm font-medium rounded-lg transition-colors"
@@ -156,24 +164,26 @@ export default function AdminDashboard() {
         </div>
 
         {/* Stationary Budget */}
-        <div className="bg-white rounded-xl border border-gray-200 p-5">
-          <h3 className="text-lg font-semibold text-gray-800 mb-4">Stationary Budget</h3>
-          {budgetData.length > 0 ? (
-            <ResponsiveContainer width="100%" height={280}>
-              <BarChart data={budgetData} layout="vertical" margin={{ left: 20 }}>
-                <CartesianGrid strokeDasharray="3 3" horizontal={false} />
-                <XAxis type="number" tickFormatter={(v) => `₹${v}`} />
-                <YAxis dataKey="branchName" type="category" width={140} tick={{ fontSize: 12 }} />
-                <Tooltip formatter={(value: number) => [`₹${value.toLocaleString()}`, "Total Spent"]} />
-                <Bar dataKey="total" fill="#DC2626" radius={[0, 4, 4, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
-          ) : (
-            <div className="h-[280px] flex items-center justify-center text-gray-400 text-sm">
-              No stationary orders yet
-            </div>
-          )}
-        </div>
+        {isMainAdmin && (
+          <div className="bg-white rounded-xl border border-gray-200 p-5">
+            <h3 className="text-lg font-semibold text-gray-800 mb-4">Stationary Budget</h3>
+            {budgetData.length > 0 ? (
+              <ResponsiveContainer width="100%" height={280}>
+                <BarChart data={budgetData} layout="vertical" margin={{ left: 20 }}>
+                  <CartesianGrid strokeDasharray="3 3" horizontal={false} />
+                  <XAxis type="number" tickFormatter={(v) => `₹${v}`} />
+                  <YAxis dataKey="branchName" type="category" width={140} tick={{ fontSize: 12 }} />
+                  <Tooltip formatter={(value: number) => [`₹${value.toLocaleString()}`, "Total Spent"]} />
+                  <Bar dataKey="total" fill="#DC2626" radius={[0, 4, 4, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            ) : (
+              <div className="h-[280px] flex items-center justify-center text-gray-400 text-sm">
+                No stationary orders yet
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Branch Performance */}
