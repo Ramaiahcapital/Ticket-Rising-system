@@ -1,23 +1,6 @@
-import { useState } from "react";
 import { useNavigate } from "react-router";
-import { LogIn, Shield, Users, FileText, ClipboardList, ChevronDown, ChevronUp } from "lucide-react";
+import { LogIn, Shield, Users, FileText, ClipboardList } from "lucide-react";
 // v2
-
-function CollapsibleSection({ title, children }: { title: string; children: React.ReactNode }) {
-  const [open, setOpen] = useState(false);
-  return (
-    <div className="border border-gray-200 rounded-lg">
-      <button
-        onClick={() => setOpen(!open)}
-        className="w-full flex items-center justify-between px-5 py-4 text-left text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors"
-      >
-        {title}
-        {open ? <ChevronUp className="w-4 h-4 text-gray-400" /> : <ChevronDown className="w-4 h-4 text-gray-400" />}
-      </button>
-      {open && <div className="px-5 pb-5 text-sm text-gray-600 leading-relaxed border-t border-gray-100 pt-4">{children}</div>}
-    </div>
-  );
-}
 
 export default function LandingPage() {
   const navigate = useNavigate();
@@ -129,30 +112,30 @@ export default function LandingPage() {
 
       {/* Terms & Privacy */}
       <section className="bg-gray-50 border-t border-gray-100">
-        <div className="max-w-3xl mx-auto px-4 sm:px-6 py-16 space-y-4">
+        <div className="max-w-3xl mx-auto px-4 sm:px-6 py-16">
           <h2 className="text-xl sm:text-2xl font-bold text-gray-900 text-center mb-6">Legal</h2>
-
-          <CollapsibleSection title="Terms and Conditions">
-            <div className="space-y-3">
-              <p><strong>1. Authorized Use Only</strong> — This system is exclusively for authorized Ramaiah Capital employees. Unauthorized access is strictly prohibited and may result in disciplinary action.</p>
-              <p><strong>2. Account Responsibility</strong> — You are responsible for maintaining the confidentiality of your login credentials. Do not share your password with anyone.</p>
-              <p><strong>3. Acceptable Use</strong> — Use the system only for legitimate work-related purposes. Do not submit false, misleading, or abusive content through tickets or comments.</p>
-              <p><strong>4. Data Ownership</strong> — All data submitted through this system belongs to Ramaiah Capital. The organization reserves the right to review, audit, and retain all system data.</p>
-              <p><strong>5. System Availability</strong> — While we strive for continuous availability, Ramaiah Capital does not guarantee uninterrupted access. Scheduled maintenance windows may apply.</p>
-              <p><strong>6. Modifications</strong> — Ramaiah Capital reserves the right to modify, update, or discontinue the system or these terms at any time without prior notice.</p>
-            </div>
-          </CollapsibleSection>
-
-          <CollapsibleSection title="Privacy Policy">
-            <div className="space-y-3">
-              <p><strong>1. Data Collected</strong> — The system collects your name, email, role, and activity data (tickets created, comments made, actions taken) for operational purposes.</p>
-              <p><strong>2. Data Usage</strong> — Your data is used solely for ticket management, reporting, and internal communication within Ramaiah Capital.</p>
-              <p><strong>3. Data Sharing</strong> — Your data is not shared with third parties. It is accessible only to authorized Ramaiah Capital personnel based on their role and permissions.</p>
-              <p><strong>4. Data Retention</strong> — System data is retained as long as necessary for operational and audit purposes. Contact your administrator for data-related requests.</p>
-              <p><strong>5. Security</strong> — We employ industry-standard security measures including encrypted connections (HTTPS) and role-based access controls to protect your data.</p>
-              <p><strong>6. Contact</strong> — For privacy-related inquiries, contact your system administrator or the IT department at Ramaiah Capital.</p>
-            </div>
-          </CollapsibleSection>
+          <div className="flex flex-col sm:flex-row gap-4 justify-center">
+            <button
+              onClick={() => navigate("/terms")}
+              className="flex items-center justify-center gap-2 px-6 py-4 bg-white rounded-xl border border-gray-200 hover:border-red-300 hover:shadow-sm transition-all group"
+            >
+              <FileText className="w-5 h-5 text-gray-400 group-hover:text-red-500" />
+              <div className="text-left">
+                <p className="text-sm font-semibold text-gray-800">Terms and Conditions</p>
+                <p className="text-xs text-gray-400">Usage rules and policies</p>
+              </div>
+            </button>
+            <button
+              onClick={() => navigate("/privacy")}
+              className="flex items-center justify-center gap-2 px-6 py-4 bg-white rounded-xl border border-gray-200 hover:border-red-300 hover:shadow-sm transition-all group"
+            >
+              <Shield className="w-5 h-5 text-gray-400 group-hover:text-red-500" />
+              <div className="text-left">
+                <p className="text-sm font-semibold text-gray-800">Privacy Policy</p>
+                <p className="text-xs text-gray-400">How your data is handled</p>
+              </div>
+            </button>
+          </div>
         </div>
       </section>
 

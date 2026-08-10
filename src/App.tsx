@@ -3,6 +3,8 @@ import { useAuth } from "@/hooks/useAuth";
 import AppLayout from "@/components/AppLayout";
 import Login from "@/pages/Login";
 import LandingPage from "@/pages/LandingPage";
+import TermsAndConditions from "@/pages/TermsAndConditions";
+import PrivacyPolicy from "@/pages/PrivacyPolicy";
 import AdminDashboard from "@/pages/AdminDashboard";
 import BranchDashboard from "@/pages/BranchDashboard";
 import TicketList from "@/pages/TicketList";
@@ -55,6 +57,8 @@ export default function App() {
   return (
     <Routes>
       <Route path="/login" element={<Login />} />
+      <Route path="/terms" element={<TermsAndConditions />} />
+      <Route path="/privacy" element={<PrivacyPolicy />} />
       <Route path="/" element={<HomeRoute />} />
       <Route
         path="/tickets"
