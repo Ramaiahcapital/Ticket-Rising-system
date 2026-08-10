@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { X, CheckCircle2, XCircle, Trash2, Loader2, Package } from "lucide-react";
+import { X, CheckCircle2, XCircle, Trash2, Loader2, Package, Search } from "lucide-react";
 
 interface OrderDetailsModalProps {
   order: any;
@@ -41,6 +41,7 @@ export function OrderDetailsModal({
   const [editing, setEditing] = useState<{ itemId: string; qty: number } | null>(null);
   const [addItemId, setAddItemId] = useState<string>("");
   const [addQty, setAddQty] = useState<number>(1);
+  const [addSearch, setAddSearch] = useState("");
 
   const itemCount = order?.items?.length ?? 0;
   const approved = !!order?.clusterApprovedAt && order?.status !== "cancelled";
@@ -155,18 +156,29 @@ export function OrderDetailsModal({
               {available.length === 0 ? (
                 <p className="text-xs text-gray-400">No items available to add.</p>
               ) : (
-                <div className="flex items-center gap-2">
-                  <select
-                    value={addTarget?.id ?? ""}
-                    onChange={e => { setAddItemId(e.target.value); setAddQty(1); }}
-                    className="flex-1 px-2 py-2 border border-gray-300 rounded-lg text-sm bg-white focus:border-red-500 outline-none"
-                  >
-                    {available.map(i => (
-                      <option key={i.id} value={i.id} disabled={i.threshold > 0 && i.remaining <= 0}>
-                        {i.name}{i.threshold > 0 ? ` (max ${i.remaining} more)` : ""}
-                      </option>
-                    ))}
-                  </select>
+                <>
+                  <div className="relative mb-2">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                    <input
+                      type="text"
+                      placeholder="Search items..."
+                      value={addSearch}
+                      onChange={e => setAddSearch(e.target.value)}
+                      className="w-full pl-9 pr-3 py-2 border border-gray-300 rounded-lg text-sm focus:border-red-500 focus:ring-1 focus:ring-red-500/20 outline-none"
+                    />
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <select
+                      value={addTarget?.id ?? ""}
+                      onChange={e => { setAddItemId(e.target.value); setAddQty(1); }}
+                      className="flex-1 px-2 py-2 border border-gray-300 rounded-lg text-sm bg-white focus:border-red-500 outline-none"
+                    >
+                      {available.filter(i => !addSearch || i.name.toLowerCase().includes(addSearch.toLowerCase())).map(i => (
+                        <option key={i.id} value={i.id} disabled={i.threshold > 0 && i.remaining <= 0}>
+                          {i.name}{i.threshold > 0 ? ` (max ${i.remaining} more)` : ""}
+                        </option>
+                      ))}
+                    </select>
                   <input
                     type="number"
                     min={1}
@@ -187,6 +199,7 @@ export function OrderDetailsModal({
                     {addPending ? <Loader2 className="w-4 h-4 animate-spin" /> : null} Add
                   </button>
                 </div>
+                </>
               )}
             </div>
           )}

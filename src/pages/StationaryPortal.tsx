@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { trpc } from "@/providers/trpc";
-import { Loader2, Package, ShoppingCart, CheckCircle2, XCircle, Clock, AlertTriangle, Eye } from "lucide-react";
+import { Loader2, Package, ShoppingCart, CheckCircle2, XCircle, Clock, AlertTriangle, Eye, Search } from "lucide-react";
 import { OrderDetailsModal } from "@/components/OrderDetailsModal";
 
 const STATUS_META: Record<string, { label: string; cls: string }> = {
@@ -64,6 +64,7 @@ export default function StationaryPortal() {
   const [placed, setPlaced] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
   const [viewOrderId, setViewOrderId] = useState<string | null>(null);
+  const [itemSearch, setItemSearch] = useState("");
 
   const myOrdersList = myOrders.data ?? [];
   const viewOrder = myOrdersList.find((o: any) => o.id === viewOrderId) ?? null;
@@ -133,12 +134,22 @@ export default function StationaryPortal() {
           <div className="p-4 border-b border-gray-200">
             <h3 className="font-semibold text-gray-800 flex items-center gap-2"><Package className="w-4 h-4" /> Available Items</h3>
             <p className="text-xs text-gray-500 mt-1">Threshold = max quantity per branch for this order window.</p>
+            <div className="relative mt-3">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+              <input
+                type="text"
+                placeholder="Search items..."
+                value={itemSearch}
+                onChange={e => setItemSearch(e.target.value)}
+                className="w-full pl-9 pr-3 py-2 border border-gray-300 rounded-lg text-sm focus:border-red-500 focus:ring-1 focus:ring-red-500/20 outline-none"
+              />
+            </div>
           </div>
           {isLoading ? (
             <div className="p-8 text-center text-gray-400 text-sm">Loading…</div>
           ) : (
             <div className="divide-y divide-gray-50">
-              {items?.map((it) => {
+              {items?.filter(it => !itemSearch || it.name.toLowerCase().includes(itemSearch.toLowerCase())).map((it) => {
                 const remaining = it.remaining;
                 const qty = cart[it.id] ?? 0;
                 return (

@@ -1,6 +1,6 @@
 import { useState, useRef } from "react";
 import { trpc } from "@/providers/trpc";
-import { Plus, Pencil, Trash2, X, Loader2, Package, Settings2, ClipboardList, BarChart3, Save, Download, Printer, Eye } from "lucide-react";
+import { Plus, Pencil, Trash2, X, Loader2, Package, Settings2, ClipboardList, BarChart3, Save, Download, Printer, Eye, Search } from "lucide-react";
 import { OrderDetailsModal } from "@/components/OrderDetailsModal";
 import ExcelJS from "exceljs";
 
@@ -62,6 +62,7 @@ function ItemsTab() {
   const [show, setShow] = useState(false);
   const [editing, setEditing] = useState<string | null>(null);
   const [form, setForm] = useState({ name: "", description: "", unit: "", price: "0", threshold: "0", isActive: true });
+  const [itemSearch, setItemSearch] = useState("");
 
   const open = (it?: any) => {
     if (it) {
@@ -94,8 +95,20 @@ function ItemsTab() {
         <h3 className="font-semibold text-gray-800">Stationary Items <span className="text-xs bg-gray-100 text-gray-500 px-2 py-0.5 rounded-full ml-2">{items?.length || 0}</span></h3>
         <button onClick={() => open()} className="flex items-center gap-1 px-3 py-1.5 bg-red-600 text-white text-xs font-medium rounded-lg hover:bg-red-700"><Plus className="w-3 h-3" /> Add Item</button>
       </div>
+      <div className="px-4 py-3 border-b border-gray-100">
+        <div className="relative">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+          <input
+            type="text"
+            placeholder="Search items..."
+            value={itemSearch}
+            onChange={e => setItemSearch(e.target.value)}
+            className="w-full pl-9 pr-3 py-2 border border-gray-300 rounded-lg text-sm focus:border-red-500 focus:ring-1 focus:ring-red-500/20 outline-none"
+          />
+        </div>
+      </div>
       <div className="divide-y divide-gray-50">
-        {isLoading ? <div className="p-8 text-center text-gray-400 text-sm">Loading…</div> : items?.map((it) => (
+        {isLoading ? <div className="p-8 text-center text-gray-400 text-sm">Loading…</div> : items?.filter(it => !itemSearch || it.name.toLowerCase().includes(itemSearch.toLowerCase())).map((it) => (
           <div key={it.id} className="flex items-center justify-between p-4 hover:bg-gray-50">
             <div className="flex-1 min-w-0">
               <p className="text-sm font-medium text-gray-800">{it.name} {!it.isActive && <span className="text-[10px] text-gray-400">(inactive)</span>}</p>
