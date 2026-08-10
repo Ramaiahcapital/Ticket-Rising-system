@@ -59,8 +59,6 @@ export default function GoogleConnect() {
           </p>
           <a
             href={authUrl?.url || "#"}
-            target="_blank"
-            rel="noopener noreferrer"
             className="inline-flex items-center gap-2 px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg transition-colors"
           >
             <ExternalLink className="w-4 h-4" />

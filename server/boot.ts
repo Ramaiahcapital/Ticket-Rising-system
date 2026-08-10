@@ -17,7 +17,7 @@ app.get("/api/google/callback", async (c) => {
   const state = url.searchParams.get("state"); // userId
 
   if (!code || !state) {
-    return c.redirect("/#/settings?google=error");
+    return c.redirect("/#/email-settings?google=error");
   }
 
   try {
@@ -26,7 +26,7 @@ app.get("/api/google/callback", async (c) => {
 
     const tokens = await exchangeCodeForTokens(code);
     if (!tokens.access_token || !tokens.refresh_token) {
-      return c.redirect("/#/settings?google=error");
+      return c.redirect("/#/email-settings?google=error");
     }
 
     const googleEmail = await getGoogleEmail(tokens.access_token);
@@ -47,10 +47,10 @@ app.get("/api/google/callback", async (c) => {
       { onConflict: "userId" }
     );
 
-    return c.redirect("/#/settings?google=connected");
+    return c.redirect("/#/email-settings?google=connected");
   } catch (err) {
     console.error("Google OAuth callback error:", err);
-    return c.redirect("/#/settings?google=error");
+    return c.redirect("/#/email-settings?google=error");
   }
 });
 
