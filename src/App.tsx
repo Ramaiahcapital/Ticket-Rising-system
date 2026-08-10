@@ -2,6 +2,7 @@ import { Routes, Route, Navigate } from "react-router";
 import { useAuth } from "@/hooks/useAuth";
 import AppLayout from "@/components/AppLayout";
 import Login from "@/pages/Login";
+import LandingPage from "@/pages/LandingPage";
 import AdminDashboard from "@/pages/AdminDashboard";
 import BranchDashboard from "@/pages/BranchDashboard";
 import TicketList from "@/pages/TicketList";
@@ -36,7 +37,7 @@ function ProtectedRoute({ children, requireAdmin = false, requireMainAdmin = fal
   }
 
   if (!user) {
-    return <Navigate to="/login" replace />;
+    return <Navigate to="/" replace />;
   }
 
   if (requireMainAdmin) {
@@ -54,14 +55,7 @@ export default function App() {
   return (
     <Routes>
       <Route path="/login" element={<Login />} />
-      <Route
-        path="/"
-        element={
-          <ProtectedRoute>
-            <RoleBasedDashboard />
-          </ProtectedRoute>
-        }
-      />
+      <Route path="/" element={<HomeRoute />} />
       <Route
         path="/tickets"
         element={
@@ -200,6 +194,23 @@ export default function App() {
       />
       <Route path="*" element={<NotFound />} />
     </Routes>
+  );
+}
+
+function HomeRoute() {
+  const { user, isLoading } = useAuth();
+  if (isLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-red-600" />
+      </div>
+    );
+  }
+  if (!user) return <LandingPage />;
+  return (
+    <ProtectedRoute>
+      <RoleBasedDashboard />
+    </ProtectedRoute>
   );
 }
 
