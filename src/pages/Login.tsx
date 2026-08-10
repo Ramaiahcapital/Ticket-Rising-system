@@ -124,7 +124,7 @@ export default function Login() {
         </form>
 
         <p className="text-center text-xs text-gray-400 mt-6">
-          &copy; 2025 Ramaiah Capital. All rights reserved.
+          &copy; 2026 Ramaiah Capital. All rights reserved.
         </p>
       </div>
     </div>
