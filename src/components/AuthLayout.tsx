@@ -1,6 +1,7 @@
 import { useAuth } from "@/hooks/useAuth";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
+import { ChangePasswordDialog } from "@/components/ChangePasswordDialog";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -22,7 +23,7 @@ import {
 } from "@/components/ui/sidebar";
 import { LOGIN_PATH } from "@/const";
 import { useIsMobile } from "@/hooks/use-mobile";
-import { LayoutDashboard, LogOut, PanelLeft, Users } from "lucide-react";
+import { LayoutDashboard, LogOut, PanelLeft, KeyRound, Users } from "lucide-react";
 import { type CSSProperties, type ReactNode, useEffect, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router";
 import { AuthLayoutSkeleton } from "./AuthLayoutSkeleton";
@@ -114,6 +115,7 @@ function AuthLayoutContent({
   const { state, toggleSidebar } = useSidebar();
   const isCollapsed = state === "collapsed";
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
+  const [showChangePassword, setShowChangePassword] = useState(false);
   const [isResizing, setIsResizing] = useState(false);
   const sidebarRef = useRef<HTMLDivElement>(null);
   const activeMenuItem = menuItems.find(item => item.path === location.pathname);
@@ -226,6 +228,13 @@ function AuthLayoutContent({
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="w-48">
                 <DropdownMenuItem
+                  onClick={() => setShowChangePassword(true)}
+                  className="cursor-pointer"
+                >
+                  <KeyRound className="mr-2 h-4 w-4" />
+                  <span>Change Password</span>
+                </DropdownMenuItem>
+                <DropdownMenuItem
                   onClick={() => setShowLogoutConfirm(true)}
                   className="cursor-pointer text-destructive focus:text-destructive"
                 >
@@ -243,6 +252,10 @@ function AuthLayoutContent({
               confirmLabel="Sign Out"
               cancelLabel="Cancel"
               onConfirm={logout}
+            />
+            <ChangePasswordDialog
+              open={showChangePassword}
+              onOpenChange={setShowChangePassword}
             />
           </SidebarFooter>
         </Sidebar>

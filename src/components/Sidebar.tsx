@@ -3,6 +3,7 @@ import { useNavigate, useLocation } from "react-router";
 import { useAuth } from "@/hooks/useAuth";
 import { useBranchRoles } from "@/hooks/useBranchRoles";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
+import { ChangePasswordDialog } from "@/components/ChangePasswordDialog";
 import {
   LayoutDashboard,
   Ticket,
@@ -19,6 +20,7 @@ import {
   Layers,
   Mail,
   UserCog,
+  KeyRound,
 } from "lucide-react";
 
 interface SidebarProps {
@@ -59,6 +61,7 @@ export default function Sidebar({ isAdmin, mobile, onClose }: SidebarProps) {
   const { logout, user, isCluster } = useAuth();
   const { getColor } = useBranchRoles();
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
+  const [showChangePassword, setShowChangePassword] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(
     location.pathname === "/settings" ||
       location.pathname === "/statuses" ||
@@ -249,6 +252,13 @@ export default function Sidebar({ isAdmin, mobile, onClose }: SidebarProps) {
           )}
         </div>
         <button
+          onClick={() => setShowChangePassword(true)}
+          className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-gray-600 hover:bg-gray-50 hover:text-gray-900 transition-all"
+        >
+          <KeyRound className="w-5 h-5" />
+          Change Password
+        </button>
+        <button
           onClick={() => setShowLogoutConfirm(true)}
           className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-gray-600 hover:bg-red-50 hover:text-red-600 transition-all"
         >
@@ -265,6 +275,10 @@ export default function Sidebar({ isAdmin, mobile, onClose }: SidebarProps) {
         confirmLabel="Sign Out"
         cancelLabel="Cancel"
         onConfirm={logout}
+      />
+      <ChangePasswordDialog
+        open={showChangePassword}
+        onOpenChange={setShowChangePassword}
       />
     </aside>
   );
