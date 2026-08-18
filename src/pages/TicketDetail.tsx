@@ -9,7 +9,7 @@ import {
   ArrowLeft, Send, Clock, User, Tag,
   Building2, Calendar, Loader2, RefreshCw,
   Download, X, ChevronLeft, ChevronRight,
-  FileText, ImageIcon,
+  FileText, ImageIcon, Bell,
 } from "lucide-react";
 
 export default function TicketDetail() {
@@ -105,6 +105,15 @@ export default function TicketDetail() {
     },
     onError: () => {
       setStatusChanging(false);
+    },
+  });
+
+  const notifyBranch = trpc.ticket.notifyBranch.useMutation({
+    onSuccess: () => {
+      alert("Branch user has been notified via email.");
+    },
+    onError: (err) => {
+      alert(err.message || "Failed to send notification.");
     },
   });
 
@@ -267,6 +276,25 @@ export default function TicketDetail() {
               <Send className="w-4 h-4" />
               {replyOpen ? "Close Reply" : "Reply"}
             </button>
+
+            {isAdmin && (
+              <button
+                onClick={() => {
+                  if (confirm("Send an email notification to the branch user about your latest reply?")) {
+                    notifyBranch.mutate({ ticketId });
+                  }
+                }}
+                disabled={notifyBranch.isPending}
+                className="flex items-center gap-2 px-4 py-2 bg-amber-500 hover:bg-amber-600 text-white text-sm font-medium rounded-lg transition-colors disabled:opacity-60"
+              >
+                {notifyBranch.isPending ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : (
+                  <Bell className="w-4 h-4" />
+                )}
+                Notify Branch
+              </button>
+            )}
 
             {isAdmin && (
               <div className="relative">

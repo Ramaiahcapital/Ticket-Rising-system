@@ -139,6 +139,9 @@ export default function Sidebar({ isAdmin, mobile, onClose }: SidebarProps) {
                 <Package className={`w-5 h-5 ${location.pathname === "/stationary/admin" ? "text-red-600" : "text-gray-400"}`} /> Stationary
               </button>
             )}
+            <button onClick={() => go("/email-settings")} className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all ${location.pathname === "/email-settings" ? "bg-red-50 text-red-600 border-l-[3px] border-red-600" : "text-gray-600 hover:bg-gray-50 hover:text-gray-900"}`}>
+              <Mail className={`w-5 h-5 ${location.pathname === "/email-settings" ? "text-red-600" : "text-gray-400"}`} /> Email Settings
+            </button>
 
             {/* Settings (expandable) — main admins only */}
             {isMainAdmin && (

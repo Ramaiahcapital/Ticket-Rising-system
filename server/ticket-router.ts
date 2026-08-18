@@ -806,6 +806,60 @@ export const ticketRouter = createRouter({
       }
       return { success: true };
     }),
+
+  /** Manually notify the branch user via email about an admin reply. */
+  notifyBranch: adminQuery
+    .input(z.object({ ticketId: z.string() }))
+    .mutation(async ({ ctx, input }) => {
+      const supabase = getSupabaseAdmin();
+      const { data: ticket } = await supabase
+        .from("tickets")
+        .select("*")
+        .eq("id", input.ticketId)
+        .maybeSingle();
+      if (!ticket) throw new Error("Ticket not found");
+      if (!canAdminAccessTicket(ctx.user, ticket.branchRole)) {
+        throw new Error("Access denied");
+      }
+
+      const { data: branchProfile } = await supabase
+        .from("profiles")
+        .select("email, branchName")
+        .eq("id", ticket.branchId)
+        .maybeSingle();
+      if (!branchProfile?.email) throw new Error("Branch user email not found");
+
+      const actorName = getActorName(ctx);
+      const htmlBody = `<div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;">
+        <h2 style="color:#DC2626;">Update on your ticket ${ticket.ticketNumber}</h2>
+        <p>A reply has been posted on your ticket <strong>${ticket.ticketNumber} — ${ticket.subject}</strong> by ${actorName}.</p>
+        <p>Please log in to the Ticket Management System to view the latest reply.</p>
+        <p style="margin-top:16px;color:#666;">Ramaiah Capital Ticket Management System</p>
+      </div>`;
+
+      try {
+        await sendEmailFromUser(
+          ctx.user.id,
+          branchProfile.email,
+          `Update on Ticket: ${ticket.ticketNumber} - ${ticket.subject}`,
+          htmlBody
+        );
+      } catch (e) {
+        console.error("Notify branch email failed:", e);
+        throw new Error("Failed to send email. Make sure your Google account is connected in Email Settings.");
+      }
+
+      await createNotification({
+        recipientId: ticket.branchId,
+        recipientType: "branch",
+        title: "Admin Reply",
+        message: `Admin replied on your ticket ${ticket.ticketNumber}`,
+        type: "comment_added",
+        ticketId: input.ticketId,
+      });
+
+      return { success: true };
+    }),
 });
 
 async function enrichTicket(supabase: ReturnType<typeof getSupabaseAdmin>, ticket: TicketRow) {
