@@ -152,21 +152,6 @@ export const ticketCommentRouter = createRouter({
           type: "comment_added",
           ticketId: input.ticketId,
         });
-
-        // Email the admins relevant to this ticket's department
-        try {
-          const admins = await getRoleAdminRecipients(ticket.branchRole, { activeOnly: true });
-          for (const admin of admins) {
-            if (admin.email) {
-              await sendEmailFromUser(
-                ctx.user.id,
-                admin.email,
-                `Re: ${ticket.ticketNumber} - ${ticket.subject}`,
-                emailBody(actorName)
-              );
-            }
-          }
-        } catch (e) { console.error("Reply email failed:", e); }
       } else {
         await createNotification({
           recipientId: ticket.branchId,

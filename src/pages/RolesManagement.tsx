@@ -6,7 +6,7 @@ export default function RolesManagement() {
   const [showModal, setShowModal] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [removingId, setRemovingId] = useState<string | null>(null);
-  const [form, setForm] = useState({ name: "", color: "#3B82F6", isActive: true });
+  const [form, setForm] = useState({ name: "", color: "#3B82F6", isActive: true, emailNotifications: true });
   const [formError, setFormError] = useState("");
 
   const utils = trpc.useUtils();
@@ -31,10 +31,10 @@ export default function RolesManagement() {
     onError: (e) => { alert(e.message); },
   });
 
-  const reset = () => { setForm({ name: "", color: "#3B82F6", isActive: true }); setEditingId(null); setShowModal(false); setFormError(""); };
+  const reset = () => { setForm({ name: "", color: "#3B82F6", isActive: true, emailNotifications: true }); setEditingId(null); setShowModal(false); setFormError(""); };
 
   const openEdit = (r: NonNullable<typeof roles>[0]) => {
-    setForm({ name: r.name, color: r.color, isActive: r.isActive });
+    setForm({ name: r.name, color: r.color, isActive: r.isActive, emailNotifications: r.emailNotifications });
     setEditingId(r.id);
     setShowModal(true);
   };
@@ -43,9 +43,9 @@ export default function RolesManagement() {
     e.preventDefault();
     if (!form.name.trim()) { setFormError("Role name is required"); return; }
     if (editingId) {
-      updateRole.mutate({ id: editingId, name: form.name, color: form.color, isActive: form.isActive });
+      updateRole.mutate({ id: editingId, name: form.name, color: form.color, isActive: form.isActive, emailNotifications: form.emailNotifications });
     } else {
-      createRole.mutate({ name: form.name, color: form.color, isActive: form.isActive, sortOrder: (roles?.length ?? 0) + 1 });
+      createRole.mutate({ name: form.name, color: form.color, isActive: form.isActive, emailNotifications: form.emailNotifications, sortOrder: (roles?.length ?? 0) + 1 });
     }
   };
 
@@ -82,6 +82,7 @@ export default function RolesManagement() {
                 <th className="text-left py-3 px-4 text-xs font-semibold text-gray-500 uppercase">Role Name</th>
                 <th className="text-left py-3 px-4 text-xs font-semibold text-gray-500 uppercase">Color</th>
                 <th className="text-left py-3 px-4 text-xs font-semibold text-gray-500 uppercase">Active</th>
+                <th className="text-left py-3 px-4 text-xs font-semibold text-gray-500 uppercase">Email Notify</th>
                 <th className="text-left py-3 px-4 text-xs font-semibold text-gray-500 uppercase">Actions</th>
               </tr>
             </thead>
@@ -107,6 +108,11 @@ export default function RolesManagement() {
                     <td className="py-3 px-4">
                       <button onClick={() => updateRole.mutate({ id: r.id, isActive: !r.isActive })} className="transition-colors">
                         {r.isActive ? <ToggleRight className="w-5 h-5 text-green-500" /> : <ToggleLeft className="w-5 h-5 text-gray-300" />}
+                      </button>
+                    </td>
+                    <td className="py-3 px-4">
+                      <button onClick={() => updateRole.mutate({ id: r.id, emailNotifications: !r.emailNotifications })} className="transition-colors">
+                        {r.emailNotifications ? <ToggleRight className="w-5 h-5 text-green-500" /> : <ToggleLeft className="w-5 h-5 text-gray-300" />}
                       </button>
                     </td>
                     <td className="py-3 px-4">
@@ -151,6 +157,10 @@ export default function RolesManagement() {
               <div className="flex items-center gap-2">
                 <input type="checkbox" id="isActive" checked={form.isActive} onChange={e => setForm({...form, isActive: e.target.checked})} className="w-4 h-4 text-red-600 rounded" />
                 <label htmlFor="isActive" className="text-sm text-gray-700">Active (role is assignable and shown in selects)</label>
+              </div>
+              <div className="flex items-center gap-2">
+                <input type="checkbox" id="emailNotifications" checked={form.emailNotifications} onChange={e => setForm({...form, emailNotifications: e.target.checked})} className="w-4 h-4 text-red-600 rounded" />
+                <label htmlFor="emailNotifications" className="text-sm text-gray-700">Enable email notifications (tickets & admin replies)</label>
               </div>
               {editingId && (
                 <p className="text-xs text-amber-600 bg-amber-50 border border-amber-200 rounded p-2">

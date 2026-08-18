@@ -333,32 +333,45 @@ export const ticketRouter = createRouter({
       // Send email from branch user to the admins relevant to this ticket's department
       try {
         const supabase = getSupabaseAdmin();
-        const admins = await getRoleAdminRecipients(ticketRole, { activeOnly: true });
-        const { data: sender } = await supabase
-          .from("profiles")
-          .select("branchName, email")
-          .eq("id", ctx.user.id)
-          .maybeSingle();
-        if (admins.length && sender?.email) {
-          const branchLabel = sender.branchName || "Branch";
-          for (const admin of admins) {
-            if (admin.email) {
-              await sendEmailFromUser(
-                ctx.user.id,
-                admin.email,
-                `New Ticket: ${ticketNumber} - ${subject}`,
-                `<div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;">
-                  <h2 style="color:#DC2626;">New Support Ticket</h2>
-                  <table style="width:100%;border-collapse:collapse;">
-                    <tr><td style="padding:8px;font-weight:bold;border-bottom:1px solid #eee;">Ticket #</td><td style="padding:8px;border-bottom:1px solid #eee;">${ticketNumber}</td></tr>
-                    <tr><td style="padding:8px;font-weight:bold;border-bottom:1px solid #eee;">Subject</td><td style="padding:8px;border-bottom:1px solid #eee;">${subject}</td></tr>
-                    <tr><td style="padding:8px;font-weight:bold;border-bottom:1px solid #eee;">Branch</td><td style="padding:8px;border-bottom:1px solid #eee;">${branchLabel}</td></tr>
-                    <tr><td style="padding:8px;font-weight:bold;border-bottom:1px solid #eee;">Department</td><td style="padding:8px;border-bottom:1px solid #eee;">${input.department || "Not specified"}</td></tr>
-                    <tr><td style="padding:8px;font-weight:bold;border-bottom:1px solid #eee;">Description</td><td style="padding:8px;border-bottom:1px solid #eee;">${input.description}</td></tr>
-                  </table>
-                  <p style="margin-top:16px;color:#666;">This ticket was raised from the Ramaiah Capital Ticket Management System.</p>
-                </div>`
-              );
+
+        // Check if email notifications are enabled for this role
+        let emailEnabled = true;
+        if (ticketRole) {
+          const { data: roleSetting } = await supabase
+            .from("branch_roles")
+            .select("emailNotifications")
+            .eq("name", ticketRole)
+            .maybeSingle();
+          if (roleSetting?.emailNotifications === false) emailEnabled = false;
+        }
+        if (emailEnabled) {
+          const admins = await getRoleAdminRecipients(ticketRole, { activeOnly: true });
+          const { data: sender } = await supabase
+            .from("profiles")
+            .select("branchName, email")
+            .eq("id", ctx.user.id)
+            .maybeSingle();
+          if (admins.length && sender?.email) {
+            const branchLabel = sender.branchName || "Branch";
+            for (const admin of admins) {
+              if (admin.email) {
+                await sendEmailFromUser(
+                  ctx.user.id,
+                  admin.email,
+                  `New Ticket: ${ticketNumber} - ${subject}`,
+                  `<div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;">
+                    <h2 style="color:#DC2626;">New Support Ticket</h2>
+                    <table style="width:100%;border-collapse:collapse;">
+                      <tr><td style="padding:8px;font-weight:bold;border-bottom:1px solid #eee;">Ticket #</td><td style="padding:8px;border-bottom:1px solid #eee;">${ticketNumber}</td></tr>
+                      <tr><td style="padding:8px;font-weight:bold;border-bottom:1px solid #eee;">Subject</td><td style="padding:8px;border-bottom:1px solid #eee;">${subject}</td></tr>
+                      <tr><td style="padding:8px;font-weight:bold;border-bottom:1px solid #eee;">Branch</td><td style="padding:8px;border-bottom:1px solid #eee;">${branchLabel}</td></tr>
+                      <tr><td style="padding:8px;font-weight:bold;border-bottom:1px solid #eee;">Department</td><td style="padding:8px;border-bottom:1px solid #eee;">${input.department || "Not specified"}</td></tr>
+                      <tr><td style="padding:8px;font-weight:bold;border-bottom:1px solid #eee;">Description</td><td style="padding:8px;border-bottom:1px solid #eee;">${input.description}</td></tr>
+                    </table>
+                    <p style="margin-top:16px;color:#666;">This ticket was raised from the Ramaiah Capital Ticket Management System.</p>
+                  </div>`
+                );
+              }
             }
           }
         }

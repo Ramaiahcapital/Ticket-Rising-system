@@ -19,6 +19,7 @@ export const branchRoleRouter = createRouter({
       color: r.color,
       sortOrder: r.sortOrder,
       isActive: r.isActive,
+      emailNotifications: r.emailNotifications,
     }));
   }),
 
@@ -29,6 +30,7 @@ export const branchRoleRouter = createRouter({
         color: z.string().regex(COLOR_RE).default("#6B7280"),
         sortOrder: z.number().default(0),
         isActive: z.boolean().default(true),
+        emailNotifications: z.boolean().default(true),
       })
     )
     .mutation(async ({ ctx, input }) => {
@@ -50,6 +52,7 @@ export const branchRoleRouter = createRouter({
           color: input.color,
           sortOrder: input.sortOrder,
           isActive: input.isActive,
+          emailNotifications: input.emailNotifications,
           updatedAt: new Date().toISOString(),
         })
         .select("id")
@@ -77,6 +80,7 @@ export const branchRoleRouter = createRouter({
         color: z.string().regex(COLOR_RE).optional(),
         sortOrder: z.number().optional(),
         isActive: z.boolean().optional(),
+        emailNotifications: z.boolean().optional(),
       })
     )
     .mutation(async ({ ctx, input }) => {
@@ -107,6 +111,7 @@ export const branchRoleRouter = createRouter({
       if (input.color !== undefined) updates.color = input.color;
       if (input.sortOrder !== undefined) updates.sortOrder = input.sortOrder;
       if (input.isActive !== undefined) updates.isActive = input.isActive;
+      if (input.emailNotifications !== undefined) updates.emailNotifications = input.emailNotifications;
 
       const { error } = await supabase.from("branch_roles").update(updates).eq("id", input.id);
       if (error) throw new Error(error.message);

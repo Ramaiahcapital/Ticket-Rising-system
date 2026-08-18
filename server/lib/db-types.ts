@@ -9,6 +9,7 @@ export type BranchRoleRow = {
   color: string;
   sortOrder: number;
   isActive: boolean;
+  emailNotifications: boolean;
   createdAt: string | null;
   updatedAt: string | null;
 };
