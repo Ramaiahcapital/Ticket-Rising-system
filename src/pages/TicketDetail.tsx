@@ -9,7 +9,7 @@ import {
   ArrowLeft, Send, Clock, User, Tag,
   Building2, Calendar, Loader2, RefreshCw,
   Download, X, ChevronLeft, ChevronRight,
-  FileText, ImageIcon, Bell, Forward, Check,
+  FileText, ImageIcon, Bell, Forward, Search,
 } from "lucide-react";
 
 export default function TicketDetail() {
@@ -33,6 +33,7 @@ export default function TicketDetail() {
   const [lightboxCommentId, setLightboxCommentId] = useState<string | null>(null);
   const [transferOpen, setTransferOpen] = useState(false);
   const [transferEmail, setTransferEmail] = useState("");
+  const [transferSearch, setTransferSearch] = useState("");
 
   const utils = trpc.useUtils();
   const { data: ticket, isLoading } = trpc.ticket.byId.useQuery({ id: ticketId });
@@ -46,18 +47,6 @@ export default function TicketDetail() {
   const recordAttachment = trpc.ticket.recordAttachment.useMutation();
   const { data: settings } = trpc.settings.list.useQuery();
   const liveChatEnabled = settings?.live_chat_enabled !== "false";
-
-  const { data: pendingTransfers } = trpc.ticket.pendingTransfersForTicket.useQuery(
-    { ticketId },
-    { enabled: isAdmin && !!ticketId }
-  );
-  const grantAccess = trpc.ticket.grantTransferAccess.useMutation({
-    onSuccess: () => {
-      alert("Access granted. The recipient will receive an email notification.");
-      utils.ticket.pendingTransfersForTicket.invalidate({ ticketId });
-    },
-    onError: (err) => alert(err.message || "Failed to grant access"),
-  });
 
   const formConfigData = Array.isArray(formConfig) ? formConfig[0] : formConfig;
   const filesEnabled = formConfigData?.filesEnabled ?? true;
@@ -136,11 +125,14 @@ export default function TicketDetail() {
       alert("Ticket transferred successfully. The recipient will receive an email with the portal link. (If email failed, check your Email Settings to connect Google.)");
       setTransferOpen(false);
       setTransferEmail("");
+      setTransferSearch("");
     },
     onError: (err) => {
       alert(err.message || "Failed to transfer ticket.");
     },
   });
+
+  const { data: transferUsers } = trpc.transferUser.list.useQuery(undefined, { enabled: transferOpen });
 
   if (isLoading) {
     return (
@@ -328,21 +320,6 @@ export default function TicketDetail() {
               <Forward className="w-4 h-4" />
               Transfer
             </button>
-
-            {isAdmin && pendingTransfers && pendingTransfers.length > 0 && pendingTransfers.map((pt: any) => (
-              <button
-                key={pt.id}
-                onClick={() => {
-                  if (!confirm(`Grant ${pt.to_email} access to this ticket?`)) return;
-                  grantAccess.mutate({ transferId: pt.id });
-                }}
-                disabled={grantAccess.isPending}
-                className="flex items-center gap-2 px-4 py-2 bg-green-600 hover:bg-green-700 text-white text-sm font-medium rounded-lg transition-colors disabled:opacity-50"
-              >
-                {grantAccess.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
-                Grant Access ({pt.to_email})
-              </button>
-            ))}
 
             {isAdmin && (
               <div className="relative">
@@ -733,51 +710,102 @@ export default function TicketDetail() {
           </div>
 
           {/* Transfer Modal */}
-          {transferOpen && (
-            <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50">
-              <div className="bg-white rounded-xl shadow-xl w-full max-w-md p-6 mx-4" onClick={(e) => e.stopPropagation()}>
-                <div className="flex items-center justify-between mb-4">
-                  <h3 className="text-lg font-semibold text-gray-800">Transfer Ticket</h3>
-                  <button onClick={() => { setTransferOpen(false); setTransferEmail(""); }} className="p-1 hover:bg-gray-100 rounded-lg">
-                    <X className="w-5 h-5 text-gray-500" />
-                  </button>
-                </div>
-                <p className="text-sm text-gray-600 mb-4">
-                  Enter the email address of the person you want to transfer this ticket to. They will receive an email with a link to access this ticket.
-                </p>
-                <div className="mb-4">
-                  <label className="block text-xs font-medium text-gray-700 mb-1">Recipient Email *</label>
-                  <input
-                    type="email"
-                    value={transferEmail}
-                    onChange={(e) => setTransferEmail(e.target.value)}
-                    placeholder="user@example.com"
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:border-purple-500 outline-none"
-                  />
-                </div>
-                <div className="flex justify-end gap-2">
-                  <button
-                    onClick={() => { setTransferOpen(false); setTransferEmail(""); }}
-                    className="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    onClick={() => {
-                      if (!transferEmail.trim()) return;
-                      if (!confirm(`Transfer this ticket to ${transferEmail}?`)) return;
-                      transferTicket.mutate({ ticketId, toEmail: transferEmail.trim() });
-                    }}
-                    disabled={!transferEmail.trim() || transferTicket.isPending}
-                    className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-purple-600 rounded-lg hover:bg-purple-700 disabled:opacity-50"
-                  >
-                    {transferTicket.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Forward className="w-4 h-4" />}
-                    {transferTicket.isPending ? "Transferring..." : "Transfer Ticket"}
-                  </button>
+          {transferOpen && (() => {
+            const filteredUsers = (transferUsers ?? []).filter(
+              (u: { name: string; email: string; department: string | null }) =>
+                u.name.toLowerCase().includes(transferSearch.toLowerCase()) ||
+                u.email.toLowerCase().includes(transferSearch.toLowerCase()) ||
+                (u.department || "").toLowerCase().includes(transferSearch.toLowerCase())
+            );
+            return (
+              <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50">
+                <div className="bg-white rounded-xl shadow-xl w-full max-w-md p-6 mx-4" onClick={(e) => e.stopPropagation()}>
+                  <div className="flex items-center justify-between mb-4">
+                    <h3 className="text-lg font-semibold text-gray-800">Transfer Ticket</h3>
+                    <button onClick={() => { setTransferOpen(false); setTransferEmail(""); setTransferSearch(""); }} className="p-1 hover:bg-gray-100 rounded-lg">
+                      <X className="w-5 h-5 text-gray-500" />
+                    </button>
+                  </div>
+                  <p className="text-sm text-gray-600 mb-4">
+                    Select a user from the directory or type a custom email address.
+                  </p>
+
+                  {/* Search / manual email input */}
+                  <div className="mb-3">
+                    <label className="block text-xs font-medium text-gray-700 mb-1">Search or type email *</label>
+                    <div className="relative">
+                      <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                      <input
+                        type="text"
+                        value={transferSearch}
+                        onChange={(e) => {
+                          setTransferSearch(e.target.value);
+                          if (e.target.value.includes("@")) setTransferEmail(e.target.value);
+                        }}
+                        placeholder="Search by name, email, or department..."
+                        className="w-full pl-10 pr-3 py-2 border border-gray-300 rounded-lg text-sm focus:border-purple-500 outline-none"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Directory list */}
+                  {transferUsers && transferUsers.length > 0 && (
+                    <div className="max-h-48 overflow-y-auto border border-gray-200 rounded-lg mb-3 divide-y divide-gray-100">
+                      {filteredUsers.length === 0 ? (
+                        <div className="px-3 py-4 text-center text-xs text-gray-400">
+                          {transferSearch ? "No users match" : "No transfer users configured"}
+                        </div>
+                      ) : (
+                        filteredUsers.map((u: { id: string; name: string; email: string; department: string | null }) => (
+                          <button
+                            key={u.id}
+                            onClick={() => { setTransferEmail(u.email); setTransferSearch(u.name); }}
+                            className={`w-full text-left px-3 py-2.5 hover:bg-purple-50 transition-colors ${
+                              transferEmail === u.email ? "bg-purple-50 border-l-2 border-purple-600" : ""
+                            }`}
+                          >
+                            <div className="text-sm font-medium text-gray-800">{u.name}</div>
+                            <div className="text-xs text-gray-500">{u.email}{u.department ? ` · ${u.department}` : ""}</div>
+                          </button>
+                        ))
+                      )}
+                    </div>
+                  )}
+
+                  {/* Selected email display */}
+                  {transferEmail && (
+                    <div className="mb-4 px-3 py-2 bg-purple-50 border border-purple-200 rounded-lg flex items-center justify-between">
+                      <span className="text-sm text-purple-800 font-medium">{transferEmail}</span>
+                      <button onClick={() => { setTransferEmail(""); setTransferSearch(""); }} className="text-purple-400 hover:text-purple-600">
+                        <X className="w-4 h-4" />
+                      </button>
+                    </div>
+                  )}
+
+                  <div className="flex justify-end gap-2">
+                    <button
+                      onClick={() => { setTransferOpen(false); setTransferEmail(""); setTransferSearch(""); }}
+                      className="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      onClick={() => {
+                        if (!transferEmail.trim()) return;
+                        if (!confirm(`Transfer this ticket to ${transferEmail}?`)) return;
+                        transferTicket.mutate({ ticketId, toEmail: transferEmail.trim() });
+                      }}
+                      disabled={!transferEmail.trim() || transferTicket.isPending}
+                      className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-purple-600 rounded-lg hover:bg-purple-700 disabled:opacity-50"
+                    >
+                      {transferTicket.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Forward className="w-4 h-4" />}
+                      {transferTicket.isPending ? "Transferring..." : "Transfer Ticket"}
+                    </button>
+                  </div>
                 </div>
               </div>
-            </div>
-          )}
+            );
+          })()}
 
           {/* Lightbox */}
           {lightboxIndex !== null && lightboxCommentId && (() => {

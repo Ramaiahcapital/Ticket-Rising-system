@@ -25,6 +25,7 @@ import TicketFormConfig from "@/pages/TicketFormConfig";
 import RolesManagement from "@/pages/RolesManagement";
 import EmailConnectPage from "@/pages/EmailConnectPage";
 import AdminUsersPage from "@/pages/AdminUsersPage";
+import TransferUsersPage from "@/pages/TransferUsersPage";
 import TransferAccept from "@/pages/TransferAccept";
 import NotFound from "@/pages/NotFound";
 
@@ -178,6 +179,14 @@ export default function App() {
         element={
           <ProtectedRoute requireMainAdmin>
             <AdminUsersPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/transfer-users"
+        element={
+          <ProtectedRoute requireAdmin>
+            <TransferUsersPage />
           </ProtectedRoute>
         }
       />

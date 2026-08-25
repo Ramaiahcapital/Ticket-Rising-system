@@ -383,3 +383,15 @@ export type TicketTransferRow = {
   createdAt: string;
   acceptedAt: string | null;
 };
+
+/** A transfer user (directory entry for ticket transfers). */
+export type TransferUserRow = {
+  id: string;
+  name: string;
+  email: string;
+  department: string | null;
+  credential: string | null;
+  createdBy: string | null;
+  createdAt: string | null;
+  updatedAt: string | null;
+};

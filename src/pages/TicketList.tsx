@@ -5,7 +5,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { useBranchRoles } from "@/hooks/useBranchRoles";
 import {
   Plus, Search, Filter, Eye, Ticket, Download, Loader2,
-  Forward, Bell, Check,
+  Forward,
 } from "lucide-react";
 import * as XLSX from "xlsx";
 
@@ -25,7 +25,7 @@ export default function TicketList() {
   const [showFilters, setShowFilters] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
   const [activeBucket, setActiveBucket] = useState<string>(deptParam ?? "all");
-  const [viewTab, setViewTab] = useState<"tickets" | "transferred" | "requests">("tickets");
+  const [viewTab, setViewTab] = useState<"tickets" | "transferred">("tickets");
   const limit = 10;
 
   const { data: ticketsData, isLoading } = trpc.ticket.list.useQuery({
@@ -46,19 +46,6 @@ export default function TicketList() {
     { page: 1, limit: displayLimit },
     { enabled: viewTab === "transferred" }
   );
-
-  const { data: pendingRequests, isLoading: pendingLoading, refetch: refetchPending } = trpc.ticket.listPendingTransferRequests.useQuery(
-    undefined,
-    { enabled: isAdmin && viewTab === "requests" }
-  );
-
-  const grantAccess = trpc.ticket.grantTransferAccess.useMutation({
-    onSuccess: () => {
-      alert("Access granted successfully. The recipient will receive an email notification.");
-      refetchPending();
-    },
-    onError: (err) => alert(err.message || "Failed to grant access"),
-  });
 
   const exportQuery = trpc.ticket.listExport.useQuery({
     search: search || undefined,
@@ -199,24 +186,6 @@ export default function TicketList() {
             </span>
           )}
         </button>
-        {isAdmin && (
-          <button
-            onClick={() => setViewTab("requests")}
-            className={`flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium transition-all border ${
-              viewTab === "requests"
-                ? "border-amber-600 bg-amber-50 text-amber-600"
-                : "border-gray-200 bg-white text-gray-600 hover:border-gray-300 hover:bg-gray-50"
-            }`}
-          >
-            <Bell className="w-4 h-4" />
-            Transfer Requests
-            {pendingRequests && pendingRequests.length > 0 && (
-              <span className="ml-1 px-1.5 py-0.5 rounded text-xs font-semibold bg-amber-100 text-amber-600">
-                {pendingRequests.length}
-              </span>
-            )}
-          </button>
-        )}
       </div>
 
       {/* Department Bucket Tabs (admin only) */}
@@ -335,7 +304,7 @@ export default function TicketList() {
       </div>
 
       {/* Table */}
-      {viewTab === "tickets" ? (
+      {viewTab === "tickets" && (
       <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full">
@@ -449,8 +418,8 @@ export default function TicketList() {
           </div>
         )}
       </div>
-      ) : viewTab === "transferred" ? (
-      /* Transferred Tickets Table */
+      )}
+      {viewTab === "transferred" && (
       <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full">
@@ -540,76 +509,6 @@ export default function TicketList() {
             )}
           </div>
         )}
-      </div>
-      ) : (
-      /* Transfer Requests Table (admin/sub-admin only) */
-      <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full">
-            <thead>
-              <tr className="bg-gray-50 border-b border-gray-200">
-                <th className="text-left py-3 px-4 text-xs font-semibold text-gray-500 uppercase">Ticket ID</th>
-                <th className="text-left py-3 px-4 text-xs font-semibold text-gray-500 uppercase">Subject</th>
-                <th className="text-left py-3 px-4 text-xs font-semibold text-gray-500 uppercase">Requested By</th>
-                <th className="text-left py-3 px-4 text-xs font-semibold text-gray-500 uppercase">Requested</th>
-                <th className="text-left py-3 px-4 text-xs font-semibold text-gray-500 uppercase">Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {pendingLoading ? (
-                Array.from({ length: 3 }).map((_, i) => (
-                  <tr key={i} className="border-b border-gray-50">
-                    {Array.from({ length: 5 }).map((_, j) => (
-                      <td key={j} className="py-3 px-4">
-                        <div className="h-4 bg-gray-200 rounded animate-pulse w-3/4" />
-                      </td>
-                    ))}
-                  </tr>
-                ))
-              ) : !pendingRequests || pendingRequests.length === 0 ? (
-                <tr>
-                  <td colSpan={5} className="py-12 text-center">
-                    <div className="flex flex-col items-center gap-2">
-                      <Check className="w-10 h-10 text-gray-300" />
-                      <p className="text-gray-500 text-sm">No pending transfer requests</p>
-                    </div>
-                  </td>
-                </tr>
-              ) : (
-                pendingRequests.map((req: any) => (
-                  <tr key={req.id} className="border-b border-gray-50 hover:bg-gray-50 transition-colors">
-                    <td className="py-3 px-4">
-                      <button
-                        onClick={() => navigate(`/tickets/${req.ticketId}`)}
-                        className="text-sm font-mono text-amber-600 hover:underline"
-                      >
-                        {req.ticket?.ticketNumber || "-"}
-                      </button>
-                    </td>
-                    <td className="py-3 px-4 text-sm text-gray-800 max-w-[200px] truncate">{req.ticket?.subject || "-"}</td>
-                    <td className="py-3 px-4 text-sm text-gray-600">{req.toEmail}</td>
-                    <td className="py-3 px-4 text-sm text-gray-500">
-                      {new Date(req.createdAt).toLocaleDateString()}
-                    </td>
-                    <td className="py-3 px-4">
-                      <button
-                        onClick={() => {
-                          if (!confirm(`Grant ${req.toEmail} access to this ticket?`)) return;
-                          grantAccess.mutate({ transferId: req.id });
-                        }}
-                        disabled={grantAccess.isPending}
-                        className="flex items-center gap-1 px-3 py-1.5 bg-green-600 hover:bg-green-700 text-white text-xs font-medium rounded-lg transition-colors disabled:opacity-50"
-                      >
-                        <Check className="w-3.5 h-3.5" />
-                        {grantAccess.isPending ? "Granting..." : "Grant Access"}
-                      </button>
-                    </td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
       </div>
       )}
     </div>

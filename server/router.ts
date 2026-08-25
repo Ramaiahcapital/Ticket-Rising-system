@@ -17,6 +17,7 @@ import { dashboardRouter } from "./dashboard-router.js";
 import { reportRouter } from "./report-router.js";
 import { stationaryRouter } from "./stationary-router.js";
 import { googleAuthRouter } from "./google-auth-router.js";
+import { transferUserRouter } from "./transfer-user-router.js";
 import { createRouter, publicQuery } from "./middleware.js";
 
 export const appRouter = createRouter({
@@ -40,6 +41,7 @@ export const appRouter = createRouter({
   report: reportRouter,
   stationary: stationaryRouter,
   googleAuth: googleAuthRouter,
+  transferUser: transferUserRouter,
 });
 
 export type AppRouter = typeof appRouter;

@@ -21,6 +21,7 @@ import type {
   TicketStatusRow,
   TicketSubcategoryRow,
   TicketTimelineRow,
+  TransferUserRow,
 } from "./db-types.js";
 
 type Table<R> = {
@@ -55,6 +56,7 @@ export type Database = {
       ticket_form_config: Table<TicketFormConfigRow>;
       branch_roles: Table<BranchRoleRow>;
       google_auth: Table<GoogleAuthRow>;
+      transfer_users: Table<TransferUserRow>;
     };
     Views: { [_ in never]: never };
     Functions: { [_ in never]: never };
