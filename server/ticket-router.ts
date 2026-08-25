@@ -855,7 +855,6 @@ export const ticketRouter = createRouter({
         );
       } catch (e) {
         console.error("Notify branch email failed:", e);
-        throw new Error("Failed to send email. Make sure your Google account is connected in Email Settings.");
       }
 
       await createNotification({

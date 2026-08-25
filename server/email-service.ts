@@ -2,13 +2,16 @@ import { google } from "googleapis";
 import { getSupabaseAdmin } from "./lib/supabase.js";
 import { env } from "./lib/env.js";
 
-const oAuth2Client = new google.auth.OAuth2(
-  env.googleClientId,
-  env.googleClientSecret,
-  env.googleRedirectUri
-);
+function createOAuth2Client() {
+  return new google.auth.OAuth2(
+    env.googleClientId,
+    env.googleClientSecret,
+    env.googleRedirectUri
+  );
+}
 
 export function getGoogleAuthUrl(userId: string): string {
+  const oAuth2Client = createOAuth2Client();
   return oAuth2Client.generateAuthUrl({
     access_type: "offline",
     prompt: "consent",
@@ -21,6 +24,7 @@ export function getGoogleAuthUrl(userId: string): string {
 }
 
 export async function exchangeCodeForTokens(code: string) {
+  const oAuth2Client = createOAuth2Client();
   const { tokens } = await oAuth2Client.getToken(code);
   return tokens;
 }
@@ -48,16 +52,22 @@ async function refreshIfNeeded(userId: string): Promise<string> {
     return auth.accessToken;
   }
 
+  const oAuth2Client = createOAuth2Client();
   oAuth2Client.setCredentials({ refresh_token: auth.refreshToken });
   const { credentials } = await oAuth2Client.refreshAccessToken();
 
+  const updatePayload: Partial<{ accessToken: string; refreshToken: string; tokenExpiry: string; updatedAt: string }> = {
+    accessToken: credentials.access_token || auth.accessToken,
+    tokenExpiry: new Date(credentials.expiry_date ?? Date.now() + 3600000).toISOString(),
+    updatedAt: new Date().toISOString(),
+  };
+  if (credentials.refresh_token) {
+    updatePayload.refreshToken = credentials.refresh_token;
+  }
+
   await supabase
     .from("google_auth")
-    .update({
-      accessToken: credentials.access_token || auth.accessToken,
-      tokenExpiry: new Date(credentials.expiry_date ?? Date.now() + 3600000).toISOString(),
-      updatedAt: new Date().toISOString(),
-    })
+    .update(updatePayload)
     .eq("userId", userId);
 
   return credentials.access_token || auth.accessToken;
@@ -70,6 +80,7 @@ export async function sendEmailFromUser(
   htmlBody: string
 ): Promise<boolean> {
   const res = await sendEmailFromUserResult(userId, to, subject, htmlBody);
+  if (!res.ok) throw new Error(res.reason || "Email sending failed");
   return res.ok;
 }
 
@@ -107,7 +118,7 @@ export async function sendEmailFromUserResult(
       .replace(/\//g, "_")
       .replace(/=+$/, "");
 
-    const gmailClient = new google.auth.OAuth2();
+    const gmailClient = createOAuth2Client();
     gmailClient.setCredentials({ access_token: accessToken });
     const gmail = google.gmail({ version: "v1", auth: gmailClient });
     await gmail.users.messages.send({
