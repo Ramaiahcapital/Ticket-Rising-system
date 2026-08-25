@@ -23,6 +23,9 @@ function getActorName(ctx: { user: TrpcContext["user"] }): string {
   if (ctx.user.type === "branch") {
     return ctx.user.name || ctx.user.branchName || "Branch";
   }
+  if (ctx.user.type === "transfer") {
+    return ctx.user.name || "Transfer User";
+  }
   return ctx.user.name || "Admin";
 }
 
@@ -54,6 +57,16 @@ export const ticketRouter = createRouter({
 
       if (ctx.user.type === "branch") {
         query = query.eq("branchId", ctx.user.id);
+      } else if (ctx.user.type === "transfer") {
+        const db = supabase as any;
+        const { data: transfers } = await db
+          .from("ticket_transfers")
+          .select("ticket_id")
+          .eq("to_email", ctx.user.email?.toLowerCase().trim() || "")
+          .eq("status", "accepted");
+        const ticketIds = (transfers ?? []).map((t: any) => t.ticket_id);
+        if (ticketIds.length === 0) return { items: [], total: 0, page: params.page, limit: params.limit, totalPages: 0 };
+        query = query.in("id", ticketIds);
       } else if (params.branchId) {
         query = query.eq("branchId", params.branchId);
       }
@@ -215,6 +228,10 @@ export const ticketRouter = createRouter({
       if (ctx.user.type === "branch" && ticket.branchId === ctx.user.id) hasAccess = true;
       else if (ctx.user.type === "admin" && canAdminAccessTicket(ctx.user, ticket.branchRole)) hasAccess = true;
       else if (ctx.user.type === "cluster") hasAccess = true;
+      else if (ctx.user.type === "transfer") {
+        const email = await getUserEmail(ctx.user);
+        if (await hasTransferAccess(ctx.user.id, email, input.id)) hasAccess = true;
+      }
       if (!hasAccess) {
         const email = await getUserEmail(ctx.user);
         if (await hasTransferAccess(ctx.user.id, email, input.id)) hasAccess = true;
@@ -451,6 +468,10 @@ export const ticketRouter = createRouter({
       if (ctx.user.type === "branch" && ticket.branchId === ctx.user.id) hasAccess = true;
       else if (ctx.user.type === "admin" && canAdminAccessTicket(ctx.user, ticket.branchRole)) hasAccess = true;
       else if (ctx.user.type === "cluster") hasAccess = true;
+      else if (ctx.user.type === "transfer") {
+        const email = await getUserEmail(ctx.user);
+        if (await hasTransferAccess(ctx.user.id, email, input.ticketId)) hasAccess = true;
+      }
       if (!hasAccess) {
         const email = await getUserEmail(ctx.user);
         if (await hasTransferAccess(ctx.user.id, email, input.ticketId)) hasAccess = true;
@@ -525,6 +546,21 @@ export const ticketRouter = createRouter({
         await notifyRoleAdmins(ticket.branchRole, {
           title: "Ticket Status Updated",
           message: `Ticket ${ticket.ticketNumber} status changed to ${newStatus?.name} by ${actorName}`,
+          type: "status_changed",
+          ticketId: input.ticketId,
+        });
+      } else if (ctx.user.type === "transfer") {
+        await notifyRoleAdmins(ticket.branchRole, {
+          title: "Ticket Status Updated",
+          message: `Ticket ${ticket.ticketNumber} status changed to ${newStatus?.name} by transfer user ${actorName}`,
+          type: "status_changed",
+          ticketId: input.ticketId,
+        });
+        await createNotification({
+          recipientId: ticket.branchId,
+          recipientType: "branch",
+          title: "Ticket Status Updated",
+          message: `Your ticket ${ticket.ticketNumber} is now ${newStatus?.name} (updated by ${actorName})`,
           type: "status_changed",
           ticketId: input.ticketId,
         });
@@ -788,7 +824,7 @@ export const ticketRouter = createRouter({
           fileSize: input.fileSize,
           filePath: input.filePath,
           uploadedBy: ctx.user.id,
-          uploadedByType: ctx.user.type === "admin" ? "admin" : "branch",
+          uploadedByType: ctx.user.type === "admin" ? "admin" : ctx.user.type === "transfer" ? "transfer" : "branch",
         })
         .select("id")
         .single();

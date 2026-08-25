@@ -1,4 +1,4 @@
-export type Role = "admin" | "branch" | "cluster";
+export type Role = "admin" | "branch" | "cluster" | "transfer";
 
 /** Dynamic branch role name (managed via the branch_roles table). */
 export type BranchRole = string;
@@ -161,7 +161,7 @@ export type TicketAttachmentRow = {
   fileSize: number;
   filePath: string;
   uploadedBy: string;
-  uploadedByType: "admin" | "branch";
+  uploadedByType: "admin" | "branch" | "transfer";
   createdAt: string | null;
 };
 
@@ -308,6 +308,13 @@ export type UnifiedUser =
       role: "cluster";
       clusterId: string | null;
       clusterName: string | null;
+    }
+  | {
+      type: "transfer";
+      id: string;
+      name: string | null;
+      email: string | null;
+      role: "transfer";
     };
 
 export function mapProfileToUnifiedUser(p: Profile): UnifiedUser {
@@ -331,6 +338,15 @@ export function mapProfileToUnifiedUser(p: Profile): UnifiedUser {
       role: "cluster",
       clusterId: p.clusterId,
       clusterName: p.name,
+    };
+  }
+  if (p.role === "transfer") {
+    return {
+      type: "transfer",
+      id: p.id,
+      name: p.name,
+      email: p.email,
+      role: "transfer",
     };
   }
   return {

@@ -34,6 +34,13 @@ export type UnifiedUser =
       role: "cluster";
       clusterId: string | null;
       clusterName: string | null;
+    }
+  | {
+      type: "transfer";
+      id: string;
+      name: string | null;
+      email: string | null;
+      role: "transfer";
     };
 
 export function useAuth() {
@@ -75,6 +82,7 @@ export function useAuth() {
       adminRole: user?.type === "admin" ? user.adminRole : null,
       isBranch: user?.type === "branch",
       isCluster: user?.type === "cluster",
+      isTransfer: user?.type === "transfer",
       isLoading: isLoading || logoutMutation.isPending,
       logout,
     }),

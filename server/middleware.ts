@@ -41,6 +41,7 @@ function requireRole(role: string) {
 export const authedQuery = t.procedure.use(requireAuth);
 export const adminQuery = authedQuery.use(requireRole("admin"));
 export const clusterQuery = authedQuery.use(requireRole("cluster"));
+export const transferQuery = authedQuery.use(requireRole("transfer"));
 
 // Main admins (role "admin", no adminRole bucket) only.
 // Sub-admins are still type "admin" but are scoped to their bucket.

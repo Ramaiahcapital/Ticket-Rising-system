@@ -15,7 +15,7 @@ import {
 export default function TicketDetail() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const { isAdmin } = useAuth();
+  const { isAdmin, isTransfer } = useAuth();
   const { getColor } = useBranchRoles();
   const ticketId = id ?? "";
 
@@ -132,7 +132,7 @@ export default function TicketDetail() {
     },
   });
 
-  const { data: transferUsers } = trpc.transferUser.list.useQuery(undefined, { enabled: transferOpen });
+  const { data: transferUsers } = trpc.transferUser.all.useQuery(undefined, { enabled: transferOpen });
 
   if (isLoading) {
     return (
@@ -313,6 +313,7 @@ export default function TicketDetail() {
               </button>
             )}
 
+            {!isTransfer && (
             <button
               onClick={() => setTransferOpen(true)}
               className="flex items-center gap-2 px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white text-sm font-medium rounded-lg transition-colors"
@@ -320,6 +321,7 @@ export default function TicketDetail() {
               <Forward className="w-4 h-4" />
               Transfer
             </button>
+            )}
 
             {isAdmin && (
               <div className="relative">
@@ -423,6 +425,7 @@ export default function TicketDetail() {
                     )}
                     {comments?.map((c) => {
                       const isAdminAuthor = c.authorType === "admin";
+                      const isTransferAuthor = c.authorType === "transfer";
                       return (
                         <div key={c.id} className="border border-gray-200 rounded-lg overflow-hidden mb-3">
                           {/* Email header */}
@@ -430,7 +433,7 @@ export default function TicketDetail() {
                             <div className="flex items-center justify-between">
                               <div className="flex items-center gap-2">
                                 <div className={`w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0 ${
-                                  isAdminAuthor ? "bg-red-100 text-red-600" : "bg-blue-100 text-blue-600"
+                                  isAdminAuthor ? "bg-red-100 text-red-600" : isTransferAuthor ? "bg-purple-100 text-purple-600" : "bg-blue-100 text-blue-600"
                                 }`}>
                                   <User className="w-3.5 h-3.5" />
                                 </div>
@@ -439,6 +442,9 @@ export default function TicketDetail() {
                                     <p className="text-sm font-medium text-gray-800">{c.authorName}</p>
                                     {isAdminAuthor && (
                                       <span className="px-1.5 py-0.5 bg-red-50 text-red-600 text-[10px] rounded font-medium">Admin</span>
+                                    )}
+                                    {isTransferAuthor && (
+                                      <span className="px-1.5 py-0.5 bg-purple-50 text-purple-600 text-[10px] rounded font-medium">Transfer User</span>
                                     )}
                                     {c.isInternal && (
                                       <span className="px-1.5 py-0.5 bg-yellow-100 text-yellow-700 text-[10px] rounded font-medium">Internal Note</span>
@@ -712,10 +718,9 @@ export default function TicketDetail() {
           {/* Transfer Modal */}
           {transferOpen && (() => {
             const filteredUsers = (transferUsers ?? []).filter(
-              (u: { name: string; email: string; department: string | null }) =>
-                u.name.toLowerCase().includes(transferSearch.toLowerCase()) ||
-                u.email.toLowerCase().includes(transferSearch.toLowerCase()) ||
-                (u.department || "").toLowerCase().includes(transferSearch.toLowerCase())
+              (u: { name: string | null; email: string | null }) =>
+                (u.name || "").toLowerCase().includes(transferSearch.toLowerCase()) ||
+                (u.email || "").toLowerCase().includes(transferSearch.toLowerCase())
             );
             return (
               <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50">
@@ -756,16 +761,16 @@ export default function TicketDetail() {
                           {transferSearch ? "No users match" : "No transfer users configured"}
                         </div>
                       ) : (
-                        filteredUsers.map((u: { id: string; name: string; email: string; department: string | null }) => (
+                        filteredUsers.map((u: { id: string; name: string | null; email: string | null }) => (
                           <button
                             key={u.id}
-                            onClick={() => { setTransferEmail(u.email); setTransferSearch(u.name); }}
+                            onClick={() => { setTransferEmail(u.email || ""); setTransferSearch(u.name || ""); }}
                             className={`w-full text-left px-3 py-2.5 hover:bg-purple-50 transition-colors ${
                               transferEmail === u.email ? "bg-purple-50 border-l-2 border-purple-600" : ""
                             }`}
                           >
                             <div className="text-sm font-medium text-gray-800">{u.name}</div>
-                            <div className="text-xs text-gray-500">{u.email}{u.department ? ` · ${u.department}` : ""}</div>
+                            <div className="text-xs text-gray-500">{u.email}</div>
                           </button>
                         ))
                       )}

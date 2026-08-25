@@ -55,7 +55,7 @@ export const ticketCommentRouter = createRouter({
         .from("ticket_comments")
         .select("*")
         .eq("ticketId", input.ticketId);
-      if (ctx.user.type === "branch") {
+      if (ctx.user.type === "branch" || ctx.user.type === "transfer") {
         query = query.eq("isInternal", false);
       }
 
@@ -98,19 +98,27 @@ export const ticketCommentRouter = createRouter({
       if (ctx.user.type === "branch" && ticket.branchId === ctx.user.id) hasAccess = true;
       else if (ctx.user.type === "admin" && canAdminAccessTicket(ctx.user, ticket.branchRole)) hasAccess = true;
       else if (ctx.user.type === "cluster") hasAccess = true;
+      else if (ctx.user.type === "transfer") {
+        const email = await getUserEmail(ctx.user);
+        if (await hasTransferAccess(ctx.user.id, email, input.ticketId)) hasAccess = true;
+      }
       if (!hasAccess) {
         const email = await getUserEmail(ctx.user);
         if (await hasTransferAccess(ctx.user.id, email, input.ticketId)) hasAccess = true;
       }
       if (!hasAccess) throw new Error("Access denied");
 
-      if (ctx.user.type === "branch" && input.isInternal) {
-        throw new Error("Branch users cannot create internal notes");
+      if ((ctx.user.type === "branch" || ctx.user.type === "transfer") && input.isInternal) {
+        throw new Error("Branch and transfer users cannot create internal notes");
       }
 
       const actorName = ctx.user.type === "admin"
         ? (ctx.user.name || "Admin")
+        : ctx.user.type === "transfer"
+        ? (ctx.user.name || "Transfer User")
         : (ctx.user.name || (ctx.user as { branchName?: string | null }).branchName || "Branch");
+
+      const authorType = ctx.user.type === "transfer" ? "transfer" : ctx.user.type;
 
       const { data, error } = await supabase
         .from("ticket_comments")
@@ -119,9 +127,9 @@ export const ticketCommentRouter = createRouter({
           content: input.contentHtml ? htmlToPlainText(input.contentHtml) || input.content : input.content,
           contentHtml: input.contentHtml ? sanitizeHtml(input.contentHtml) : null,
           authorId: ctx.user.id,
-          authorType: ctx.user.type,
+          authorType,
           authorName: actorName,
-          isInternal: ctx.user.type === "admin" ? input.isInternal : false,
+          isInternal: (ctx.user.type === "admin") ? input.isInternal : false,
         })
         .select("id")
         .single();
@@ -151,7 +159,7 @@ export const ticketCommentRouter = createRouter({
           <p style="margin-top:16px;color:#666;">Ramaiah Capital Ticket Management System</p>
         </div>`;
 
-      if (ctx.user.type === "branch") {
+      if (ctx.user.type === "branch" || ctx.user.type === "transfer") {
         await notifyRoleAdmins(ticket.branchRole, {
           title: "New Comment",
           message: `New comment on ticket ${ticket.ticketNumber} from ${actorName}`,
@@ -208,7 +216,7 @@ export const ticketCommentRouter = createRouter({
         .maybeSingle();
       if (!comment) throw new Error("Comment not found");
 
-      if (ctx.user.type === "branch" && comment.authorId !== ctx.user.id) {
+      if ((ctx.user.type === "branch" || ctx.user.type === "transfer") && comment.authorId !== ctx.user.id) {
         throw new Error("Access denied");
       }
 

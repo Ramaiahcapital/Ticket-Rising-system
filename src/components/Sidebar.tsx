@@ -46,6 +46,11 @@ const clusterNavItems: NavItem[] = [
   { label: "Email Settings", icon: Mail, path: "/email-settings" },
 ];
 
+const transferNavItems: NavItem[] = [
+  { label: "My Tickets", icon: Ticket, path: "/tickets" },
+  { label: "Email Settings", icon: Mail, path: "/email-settings" },
+];
+
 const settingsChildren: NavItem[] = [
   { label: "Ticket Settings", icon: Settings, path: "/settings" },
   { label: "Ticket Form", icon: ClipboardList, path: "/ticket-form-config" },
@@ -59,7 +64,7 @@ const settingsChildren: NavItem[] = [
 export default function Sidebar({ isAdmin, mobile, onClose }: SidebarProps) {
   const navigate = useNavigate();
   const location = useLocation();
-  const { logout, user, isCluster } = useAuth();
+  const { logout, user, isCluster, isTransfer } = useAuth();
   const { getColor } = useBranchRoles();
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
   const [showChangePassword, setShowChangePassword] = useState(false);
@@ -203,6 +208,24 @@ export default function Sidebar({ isAdmin, mobile, onClose }: SidebarProps) {
               </button>
             );
           })
+        ) : isTransfer ? (
+          transferNavItems.map((item) => {
+            const isActive = location.pathname === item.path;
+            return (
+              <button
+                key={item.path}
+                onClick={() => go(item.path)}
+                className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all ${
+                  isActive
+                    ? "bg-red-50 text-red-600 border-l-[3px] border-red-600"
+                    : "text-gray-600 hover:bg-gray-50 hover:text-gray-900"
+                }`}
+              >
+                <item.icon className={`w-5 h-5 ${isActive ? "text-red-600" : "text-gray-400"}`} />
+                {item.label}
+              </button>
+            );
+          })
         ) : (
           branchNavItems.map((item) => {
             const isActive = location.pathname === item.path;
@@ -243,6 +266,12 @@ export default function Sidebar({ isAdmin, mobile, onClose }: SidebarProps) {
             <>
               <p className="text-sm font-medium text-gray-800 truncate">{user.name || "Cluster Admin"}</p>
               <p className="text-xs text-gray-500 truncate">{user.email}</p>
+            </>
+          ) : user?.type === "transfer" ? (
+            <>
+              <p className="text-sm font-medium text-gray-800 truncate">{user.name || "Transfer User"}</p>
+              <p className="text-xs text-gray-500 truncate">{user.email}</p>
+              <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-purple-50 text-purple-700 mt-1 inline-block">Transfer User</span>
             </>
           ) : (
             <>

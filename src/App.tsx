@@ -236,5 +236,6 @@ function RoleBasedDashboard() {
   const { user } = useAuth();
   if (user?.type === "admin") return <AdminDashboard />;
   if (user?.type === "cluster") return <ClusterDashboard />;
+  if (user?.type === "transfer") return <TicketList />;
   return <BranchDashboard />;
 }
