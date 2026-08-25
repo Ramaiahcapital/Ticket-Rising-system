@@ -914,7 +914,6 @@ export const ticketRouter = createRouter({
         );
       } catch (e) {
         console.error("Transfer email failed:", e);
-        throw new Error("Transfer created but email failed. Make sure your Google account is connected in Email Settings.");
       }
 
       await createNotification({

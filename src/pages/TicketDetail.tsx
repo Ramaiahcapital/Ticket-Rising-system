@@ -121,7 +121,7 @@ export default function TicketDetail() {
 
   const transferTicket = trpc.ticket.transfer.useMutation({
     onSuccess: () => {
-      alert("Ticket transferred successfully. The recipient will receive an email with the portal link.");
+      alert("Ticket transferred successfully. The recipient will receive an email with the portal link. (If email failed, check your Email Settings to connect Google.)");
       setTransferOpen(false);
       setTransferEmail("");
     },
