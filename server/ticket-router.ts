@@ -1212,6 +1212,22 @@ export const ticketRouter = createRouter({
         ticket: ticketMap.get(tr.ticket_id) || null,
       }));
     }),
+
+  pendingTransfersForTicket: authedQuery
+    .input(z.object({ ticketId: z.string() }))
+    .query(async ({ ctx, input }) => {
+      const supabase = getSupabaseAdmin();
+      const db = supabase as any;
+
+      const { data: transfers } = await db
+        .from("ticket_transfers")
+        .select("id, to_email, status, created_at")
+        .eq("ticket_id", input.ticketId)
+        .eq("from_user_id", ctx.user.id)
+        .eq("status", "requested")
+        .order("created_at", { ascending: false });
+      return transfers || [];
+    }),
 });
 
 async function enrichTicket(supabase: ReturnType<typeof getSupabaseAdmin>, ticket: TicketRow) {

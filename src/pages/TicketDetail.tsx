@@ -9,7 +9,7 @@ import {
   ArrowLeft, Send, Clock, User, Tag,
   Building2, Calendar, Loader2, RefreshCw,
   Download, X, ChevronLeft, ChevronRight,
-  FileText, ImageIcon, Bell, Forward,
+  FileText, ImageIcon, Bell, Forward, Check,
 } from "lucide-react";
 
 export default function TicketDetail() {
@@ -46,6 +46,18 @@ export default function TicketDetail() {
   const recordAttachment = trpc.ticket.recordAttachment.useMutation();
   const { data: settings } = trpc.settings.list.useQuery();
   const liveChatEnabled = settings?.live_chat_enabled !== "false";
+
+  const { data: pendingTransfers } = trpc.ticket.pendingTransfersForTicket.useQuery(
+    { ticketId },
+    { enabled: isAdmin && !!ticketId }
+  );
+  const grantAccess = trpc.ticket.grantTransferAccess.useMutation({
+    onSuccess: () => {
+      alert("Access granted. The recipient will receive an email notification.");
+      utils.ticket.pendingTransfersForTicket.invalidate({ ticketId });
+    },
+    onError: (err) => alert(err.message || "Failed to grant access"),
+  });
 
   const formConfigData = Array.isArray(formConfig) ? formConfig[0] : formConfig;
   const filesEnabled = formConfigData?.filesEnabled ?? true;
@@ -316,6 +328,21 @@ export default function TicketDetail() {
               <Forward className="w-4 h-4" />
               Transfer
             </button>
+
+            {isAdmin && pendingTransfers && pendingTransfers.length > 0 && pendingTransfers.map((pt: any) => (
+              <button
+                key={pt.id}
+                onClick={() => {
+                  if (!confirm(`Grant ${pt.to_email} access to this ticket?`)) return;
+                  grantAccess.mutate({ transferId: pt.id });
+                }}
+                disabled={grantAccess.isPending}
+                className="flex items-center gap-2 px-4 py-2 bg-green-600 hover:bg-green-700 text-white text-sm font-medium rounded-lg transition-colors disabled:opacity-50"
+              >
+                {grantAccess.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
+                Grant Access ({pt.to_email})
+              </button>
+            ))}
 
             {isAdmin && (
               <div className="relative">
