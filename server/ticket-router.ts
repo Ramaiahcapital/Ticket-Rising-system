@@ -897,7 +897,7 @@ export const ticketRouter = createRouter({
       if (insertError) throw new Error(insertError.message);
 
       const actorName = getActorName(ctx);
-      const portalUrl = `https://rcpl-ticket.vercel.app/#/transfer/${token}`;
+      const portalUrl = `https://rcpl-ticket.vercel.app/#/${token}`;
 
       try {
         await sendEmailFromUser(

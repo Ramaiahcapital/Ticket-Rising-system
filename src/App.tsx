@@ -198,12 +198,8 @@ export default function App() {
         }
       />
       <Route
-        path="/transfer/:token"
-        element={
-          <ProtectedRoute>
-            <TransferAccept />
-          </ProtectedRoute>
-        }
+        path="/:token"
+        element={<TransferAccept />}
       />
       <Route path="*" element={<NotFound />} />
     </Routes>
