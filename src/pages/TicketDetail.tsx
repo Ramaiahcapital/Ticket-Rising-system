@@ -9,7 +9,7 @@ import {
   ArrowLeft, Send, Clock, User, Tag,
   Building2, Calendar, Loader2, RefreshCw,
   Download, X, ChevronLeft, ChevronRight,
-  FileText, ImageIcon, Bell,
+  FileText, ImageIcon, Bell, Forward,
 } from "lucide-react";
 
 export default function TicketDetail() {
@@ -31,6 +31,8 @@ export default function TicketDetail() {
   const [statusDropdown, setStatusDropdown] = useState(false);
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
   const [lightboxCommentId, setLightboxCommentId] = useState<string | null>(null);
+  const [transferOpen, setTransferOpen] = useState(false);
+  const [transferEmail, setTransferEmail] = useState("");
 
   const utils = trpc.useUtils();
   const { data: ticket, isLoading } = trpc.ticket.byId.useQuery({ id: ticketId });
@@ -114,6 +116,17 @@ export default function TicketDetail() {
     },
     onError: (err) => {
       alert(err.message || "Failed to send notification.");
+    },
+  });
+
+  const transferTicket = trpc.ticket.transfer.useMutation({
+    onSuccess: () => {
+      alert("Ticket transferred successfully. The recipient will receive an email with the portal link.");
+      setTransferOpen(false);
+      setTransferEmail("");
+    },
+    onError: (err) => {
+      alert(err.message || "Failed to transfer ticket.");
     },
   });
 
@@ -295,6 +308,14 @@ export default function TicketDetail() {
                 Notify Branch
               </button>
             )}
+
+            <button
+              onClick={() => setTransferOpen(true)}
+              className="flex items-center gap-2 px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white text-sm font-medium rounded-lg transition-colors"
+            >
+              <Forward className="w-4 h-4" />
+              Transfer
+            </button>
 
             {isAdmin && (
               <div className="relative">
@@ -683,6 +704,53 @@ export default function TicketDetail() {
             <h3 className="font-semibold text-gray-800 mb-2">Description</h3>
             <p className="text-sm text-gray-600 whitespace-pre-wrap">{ticket.description}</p>
           </div>
+
+          {/* Transfer Modal */}
+          {transferOpen && (
+            <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50">
+              <div className="bg-white rounded-xl shadow-xl w-full max-w-md p-6 mx-4" onClick={(e) => e.stopPropagation()}>
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="text-lg font-semibold text-gray-800">Transfer Ticket</h3>
+                  <button onClick={() => { setTransferOpen(false); setTransferEmail(""); }} className="p-1 hover:bg-gray-100 rounded-lg">
+                    <X className="w-5 h-5 text-gray-500" />
+                  </button>
+                </div>
+                <p className="text-sm text-gray-600 mb-4">
+                  Enter the email address of the person you want to transfer this ticket to. They will receive an email with a link to access this ticket.
+                </p>
+                <div className="mb-4">
+                  <label className="block text-xs font-medium text-gray-700 mb-1">Recipient Email *</label>
+                  <input
+                    type="email"
+                    value={transferEmail}
+                    onChange={(e) => setTransferEmail(e.target.value)}
+                    placeholder="user@example.com"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:border-purple-500 outline-none"
+                  />
+                </div>
+                <div className="flex justify-end gap-2">
+                  <button
+                    onClick={() => { setTransferOpen(false); setTransferEmail(""); }}
+                    className="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={() => {
+                      if (!transferEmail.trim()) return;
+                      if (!confirm(`Transfer this ticket to ${transferEmail}?`)) return;
+                      transferTicket.mutate({ ticketId, toEmail: transferEmail.trim() });
+                    }}
+                    disabled={!transferEmail.trim() || transferTicket.isPending}
+                    className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-purple-600 rounded-lg hover:bg-purple-700 disabled:opacity-50"
+                  >
+                    {transferTicket.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Forward className="w-4 h-4" />}
+                    {transferTicket.isPending ? "Transferring..." : "Transfer Ticket"}
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* Lightbox */}
           {lightboxIndex !== null && lightboxCommentId && (() => {

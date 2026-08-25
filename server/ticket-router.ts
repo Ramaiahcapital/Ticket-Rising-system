@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { createRouter, authedQuery, adminQuery } from "./middleware.js";
+import { createRouter, authedQuery, adminQuery, publicQuery } from "./middleware.js";
 import { getSupabaseAdmin } from "./lib/supabase.js";
 import type { TicketRow } from "./lib/db-types.js";
 import {
@@ -12,6 +12,8 @@ import {
   canAdminAccessTicket,
   getRoleAdminRecipients,
   notifyRoleAdmins,
+  hasTransferAccess,
+  getUserEmail,
 } from "./lib/utils.js";
 import { sendEmailFromUser } from "./email-service.js";
 import type { TrpcContext } from "./context.js";
@@ -208,12 +210,16 @@ export const ticketRouter = createRouter({
       const supabase = getSupabaseAdmin();
       const { data: ticket } = await supabase.from("tickets").select("*").eq("id", input.id).maybeSingle();
       if (!ticket) throw new Error("Ticket not found");
-      if (ctx.user.type === "branch" && ticket.branchId !== ctx.user.id) {
-        throw new Error("Access denied");
+
+      let hasAccess = false;
+      if (ctx.user.type === "branch" && ticket.branchId === ctx.user.id) hasAccess = true;
+      else if (ctx.user.type === "admin" && canAdminAccessTicket(ctx.user, ticket.branchRole)) hasAccess = true;
+      else if (ctx.user.type === "cluster") hasAccess = true;
+      if (!hasAccess) {
+        const email = await getUserEmail(ctx.user);
+        if (await hasTransferAccess(ctx.user.id, email, input.id)) hasAccess = true;
       }
-      if (ctx.user.type === "admin" && !canAdminAccessTicket(ctx.user, ticket.branchRole)) {
-        throw new Error("Access denied");
-      }
+      if (!hasAccess) throw new Error("Access denied");
       return await enrichTicket(supabase, ticket);
     }),
 
@@ -441,12 +447,15 @@ export const ticketRouter = createRouter({
 
       const { data: ticket } = await supabase.from("tickets").select("*").eq("id", input.ticketId).maybeSingle();
       if (!ticket) throw new Error("Ticket not found");
-      if (ctx.user.type === "branch" && ticket.branchId !== ctx.user.id) {
-        throw new Error("Access denied");
+      let hasAccess = false;
+      if (ctx.user.type === "branch" && ticket.branchId === ctx.user.id) hasAccess = true;
+      else if (ctx.user.type === "admin" && canAdminAccessTicket(ctx.user, ticket.branchRole)) hasAccess = true;
+      else if (ctx.user.type === "cluster") hasAccess = true;
+      if (!hasAccess) {
+        const email = await getUserEmail(ctx.user);
+        if (await hasTransferAccess(ctx.user.id, email, input.ticketId)) hasAccess = true;
       }
-      if (ctx.user.type === "admin" && !canAdminAccessTicket(ctx.user, ticket.branchRole)) {
-        throw new Error("Access denied");
-      }
+      if (!hasAccess) throw new Error("Access denied");
 
       const { data: oldStatus } = await supabase
         .from("ticket_statuses")
@@ -859,6 +868,351 @@ export const ticketRouter = createRouter({
       });
 
       return { success: true };
+    }),
+
+  /** Transfer a ticket to another user by email. */
+  transfer: adminQuery
+    .input(z.object({ ticketId: z.string(), toEmail: z.string().email() }))
+    .mutation(async ({ ctx, input }) => {
+      const supabase = getSupabaseAdmin();
+      const db = supabase as any;
+      const { data: ticket } = await supabase
+        .from("tickets")
+        .select("*")
+        .eq("id", input.ticketId)
+        .maybeSingle();
+      if (!ticket) throw new Error("Ticket not found");
+      if (!canAdminAccessTicket(ctx.user, ticket.branchRole)) {
+        throw new Error("Access denied");
+      }
+
+      const token = crypto.randomUUID().replace(/-/g, "") + Date.now().toString(36);
+      const { error: insertError } = await db.from("ticket_transfers").insert({
+        ticket_id: input.ticketId,
+        from_user_id: ctx.user.id,
+        to_email: input.toEmail.toLowerCase().trim(),
+        token,
+        status: "pending",
+      });
+      if (insertError) throw new Error(insertError.message);
+
+      const actorName = getActorName(ctx);
+      const portalUrl = `https://rcpl-ticket.vercel.app/#/transfer/${token}`;
+
+      try {
+        await sendEmailFromUser(
+          ctx.user.id,
+          input.toEmail.toLowerCase().trim(),
+          `Ticket Transferred: ${ticket.ticketNumber} - ${ticket.subject}`,
+          `<div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;">
+            <h2 style="color:#DC2626;">Ticket Transferred to You</h2>
+            <p><strong>${actorName}</strong> has transferred ticket <strong>${ticket.ticketNumber} — ${ticket.subject}</strong> to you.</p>
+            <p>Click the link below to view and manage this ticket:</p>
+            <a href="${portalUrl}" style="display:inline-block;margin:16px 0;padding:12px 24px;background:#DC2626;color:#fff;text-decoration:none;border-radius:6px;font-weight:bold;">View Ticket</a>
+            <p style="margin-top:16px;color:#666;font-size:12px;">If you don't have an account yet, please contact your administrator to create one with this email address.</p>
+          </div>`
+        );
+      } catch (e) {
+        console.error("Transfer email failed:", e);
+        throw new Error("Transfer created but email failed. Make sure your Google account is connected in Email Settings.");
+      }
+
+      await createNotification({
+        recipientId: ticket.branchId,
+        recipientType: "branch",
+        title: "Ticket Transferred",
+        message: `Ticket ${ticket.ticketNumber} has been transferred to ${input.toEmail}`,
+        type: "ticket_transferred",
+        ticketId: input.ticketId,
+      });
+
+      return { success: true };
+    }),
+
+  /** List tickets transferred to the current user by email. */
+  listTransferred: authedQuery
+    .input(z.object({ page: z.number().default(1), limit: z.number().default(10) }).optional())
+    .query(async ({ ctx, input }) => {
+      const supabase = getSupabaseAdmin();
+      const db = supabase as any;
+      const params = input ?? { page: 1, limit: 10 };
+      const user = ctx.user;
+      if (!user) throw new Error("Not authenticated");
+
+      let userEmail: string | null = null;
+      if (user.type === "branch") userEmail = user.email;
+      else if (user.type === "admin") {
+        const { data: profile } = await supabase.from("profiles").select("email").eq("id", user.id).maybeSingle();
+        userEmail = profile?.email ?? null;
+      } else if (user.type === "cluster") {
+        const { data: profile } = await supabase.from("profiles").select("email").eq("id", user.id).maybeSingle();
+        userEmail = profile?.email ?? null;
+      }
+      if (!userEmail) return { items: [], total: 0, page: params.page, limit: params.limit, totalPages: 0 };
+
+      const from = (params.page - 1) * params.limit;
+
+      const { data: transfers, count } = await db
+        .from("ticket_transfers")
+        .select("ticket_id, id, from_user_id, to_email, status, created_at", { count: "exact" })
+        .eq("to_email", userEmail.toLowerCase().trim())
+        .eq("status", "accepted")
+        .order("created_at", { ascending: false })
+        .range(from, from + params.limit - 1);
+
+      if (!transfers?.length) return { items: [], total: count ?? 0, page: params.page, limit: params.limit, totalPages: Math.ceil((count ?? 0) / params.limit) };
+
+      const ticketIds = transfers.map((t: any) => t.ticket_id);
+      const { data: tickets } = await supabase.from("tickets").select("*").in("id", ticketIds);
+      const ticketMap = new Map((tickets ?? []).map((t: any) => [t.id, t]));
+
+      const { data: statuses } = await supabase.from("ticket_statuses").select("*");
+      const { data: priorities } = await supabase.from("ticket_priorities").select("*");
+      const { data: profiles } = await supabase.from("profiles").select("*");
+
+      const statusMap = new Map((statuses ?? []).map((s: any) => [s.id, s]));
+      const priorityMap = new Map((priorities ?? []).map((p: any) => [p.id, p]));
+      const profileMap = new Map((profiles ?? []).map((p: any) => [p.id, p]));
+
+      const items = transfers
+        .map((tr: any) => {
+          const t = ticketMap.get(tr.ticket_id);
+          if (!t) return null;
+          return {
+            ...t,
+            status: statusMap.get(t.statusId ?? "") || null,
+            priority: priorityMap.get(t.priorityId ?? "") || null,
+            assignee: profileMap.get(t.assignedTo ?? "") || null,
+            branch: profileMap.get(t.branchId) || null,
+            transferId: tr.id,
+            transferredAt: tr.created_at,
+          };
+        })
+        .filter(Boolean);
+
+      return {
+        items,
+        total: count ?? 0,
+        page: params.page,
+        limit: params.limit,
+        totalPages: Math.ceil((count ?? 0) / params.limit),
+      };
+    }),
+
+  /** Accept a ticket transfer. */
+  acceptTransfer: authedQuery
+    .input(z.object({ token: z.string() }))
+    .mutation(async ({ ctx, input }) => {
+      const supabase = getSupabaseAdmin();
+      const db = supabase as any;
+
+      const { data: transfer } = await db
+        .from("ticket_transfers")
+        .select("*")
+        .eq("token", input.token)
+        .maybeSingle();
+      if (!transfer) throw new Error("Invalid transfer link");
+      if (transfer.status !== "pending") throw new Error("This transfer has already been processed");
+
+      const user = ctx.user;
+      if (!user) throw new Error("Not authenticated");
+
+      let userEmail: string | null = null;
+      if (user.type === "branch") userEmail = user.email;
+      else {
+        const { data: profile } = await supabase.from("profiles").select("email").eq("id", user.id).maybeSingle();
+        userEmail = profile?.email ?? null;
+      }
+
+      if (!userEmail || userEmail.toLowerCase().trim() !== transfer.to_email.toLowerCase().trim()) {
+        throw new Error("This transfer is intended for a different email address. Please log in with the correct account.");
+      }
+
+      const { error } = await db
+        .from("ticket_transfers")
+        .update({ status: "accepted", accepted_at: new Date().toISOString() })
+        .eq("id", transfer.id);
+      if (error) throw new Error(error.message);
+
+      return { ticketId: transfer.ticket_id, success: true };
+    }),
+
+  /** Get a ticket by transfer token (for invite link). */
+  byTransferToken: publicQuery
+    .input(z.object({ token: z.string() }))
+    .query(async ({ input }) => {
+      const supabase = getSupabaseAdmin();
+      const db = supabase as any;
+
+      const { data: transfer } = await db
+        .from("ticket_transfers")
+        .select("id, ticket_id, to_email, from_user_id, status")
+        .eq("token", input.token)
+        .maybeSingle();
+      if (!transfer) throw new Error("Invalid transfer link");
+
+      // If pending → show "Request Access" form
+      if (transfer.status === "pending") {
+        return { status: "pending" as const, transferId: transfer.id, toEmail: transfer.to_email };
+      }
+
+      // If requested → show "Waiting for approval" message
+      if (transfer.status === "requested") {
+        return { status: "requested" as const, transferId: transfer.id, toEmail: transfer.to_email };
+      }
+
+      // If accepted → return ticket data (but need to verify email)
+      // For accepted, the user must be logged in so we can check their email
+      return { status: "accepted" as const, transferId: transfer.id, toEmail: transfer.to_email, ticketId: transfer.ticket_id };
+    }),
+
+  /** Request access to a transferred ticket (recipient types email — no login needed). */
+  requestTransferAccess: publicQuery
+    .input(z.object({ token: z.string(), email: z.string().email() }))
+    .mutation(async ({ input }) => {
+      const supabase = getSupabaseAdmin();
+      const db = supabase as any;
+
+      const { data: transfer } = await db
+        .from("ticket_transfers")
+        .select("*")
+        .eq("token", input.token)
+        .maybeSingle();
+      if (!transfer) throw new Error("Invalid transfer link");
+      if (transfer.status !== "pending") throw new Error("This transfer has already been processed");
+
+      // Email must match the transfer's target email
+      if (input.email.toLowerCase().trim() !== transfer.to_email.toLowerCase().trim()) {
+        throw new Error("This email does not match the transfer recipient. Please use the correct email.");
+      }
+
+      // Update status to requested
+      const { error } = await db
+        .from("ticket_transfers")
+        .update({ status: "requested" })
+        .eq("id", transfer.id);
+      if (error) throw new Error(error.message);
+
+      const { data: ticket } = await supabase.from("tickets").select("ticketNumber, subject").eq("id", transfer.ticket_id).maybeSingle();
+
+      // Create in-app notification for the transferer
+      await createNotification({
+        recipientId: transfer.from_user_id,
+        recipientType: "admin",
+        title: "Transfer Access Requested",
+        message: `${input.email} has requested access to ticket ${ticket?.ticketNumber || ""}`,
+        type: "transfer_access_requested",
+        ticketId: transfer.ticket_id,
+      });
+
+      // Send email to the transferer from their own connected Google account
+      try {
+        await sendEmailFromUser(
+          transfer.from_user_id,
+          transfer.to_email,
+          `Access Requested: ${ticket?.ticketNumber || ""} - ${ticket?.subject || ""}`,
+          `<div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;">
+            <h2 style="color:#DC2626;">Transfer Access Requested</h2>
+            <p><strong>${input.email}</strong> has requested access to ticket <strong>${ticket?.ticketNumber || ""} — ${ticket?.subject || ""}</strong>.</p>
+            <p>Please log in to the Ticket Management System to grant access.</p>
+            <p style="margin-top:16px;color:#666;">Ramaiah Capital Ticket Management System</p>
+          </div>`
+        );
+      } catch (e) {
+        console.error("Transfer request email failed:", e);
+      }
+
+      return { success: true };
+    }),
+
+  /** Grant access to a transferred ticket (transferer approves). */
+  grantTransferAccess: adminQuery
+    .input(z.object({ transferId: z.string() }))
+    .mutation(async ({ ctx, input }) => {
+      const supabase = getSupabaseAdmin();
+      const db = supabase as any;
+
+      const { data: transfer } = await db
+        .from("ticket_transfers")
+        .select("*")
+        .eq("id", input.transferId)
+        .maybeSingle();
+      if (!transfer) throw new Error("Transfer not found");
+      if (transfer.status !== "requested") throw new Error("This transfer is not pending approval");
+      if (transfer.from_user_id !== ctx.user.id) throw new Error("Only the person who transferred this ticket can grant access");
+
+      const { error } = await db
+        .from("ticket_transfers")
+        .update({ status: "accepted", accepted_at: new Date().toISOString() })
+        .eq("id", input.transferId);
+      if (error) throw new Error(error.message);
+
+      // Notify the recipient
+      const { data: ticket } = await supabase.from("tickets").select("ticketNumber, subject").eq("id", transfer.ticket_id).maybeSingle();
+
+      // Create in-app notification for the recipient (by email)
+      const { data: recipientProfile } = await supabase
+        .from("profiles")
+        .select("id")
+        .eq("email", transfer.to_email)
+        .maybeSingle();
+      if (recipientProfile) {
+        await createNotification({
+          recipientId: recipientProfile.id,
+          recipientType: "admin",
+          title: "Transfer Access Granted",
+          message: `You have been granted access to ticket ${ticket?.ticketNumber || ""}`,
+          type: "transfer_access_granted",
+          ticketId: transfer.ticket_id,
+        });
+      }
+
+      // Send email to recipient
+      try {
+        await sendEmailFromUser(
+          ctx.user.id,
+          transfer.to_email,
+          `Access Granted: ${ticket?.ticketNumber || ""} - ${ticket?.subject || ""}`,
+          `<div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;">
+            <h2 style="color:#16A34A;">Transfer Access Granted</h2>
+            <p>You have been granted access to ticket <strong>${ticket?.ticketNumber || ""} — ${ticket?.subject || ""}</strong>.</p>
+            <p>Please log in to the Ticket Management System to view and manage this ticket.</p>
+            <p style="margin-top:16px;color:#666;">Ramaiah Capital Ticket Management System</p>
+          </div>`
+        );
+      } catch (e) {
+        console.error("Grant access email failed:", e);
+      }
+
+      return { success: true };
+    }),
+
+  /** List pending transfer requests (for the transferer to approve). */
+  listPendingTransferRequests: adminQuery
+    .query(async ({ ctx }) => {
+      const supabase = getSupabaseAdmin();
+      const db = supabase as any;
+
+      const { data: transfers } = await db
+        .from("ticket_transfers")
+        .select("id, ticket_id, to_email, status, created_at")
+        .eq("from_user_id", ctx.user.id)
+        .eq("status", "requested")
+        .order("created_at", { ascending: false });
+      if (!transfers?.length) return [];
+
+      const ticketIds = transfers.map((t: any) => t.ticket_id);
+      const { data: tickets } = await supabase.from("tickets").select("id, ticketNumber, subject").in("id", ticketIds);
+      const ticketMap = new Map((tickets ?? []).map((t: any) => [t.id, t]));
+
+      return transfers.map((tr: any) => ({
+        id: tr.id,
+        ticketId: tr.ticket_id,
+        toEmail: tr.to_email,
+        status: tr.status,
+        createdAt: tr.created_at,
+        ticket: ticketMap.get(tr.ticket_id) || null,
+      }));
     }),
 });
 

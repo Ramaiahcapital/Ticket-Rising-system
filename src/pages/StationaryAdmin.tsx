@@ -531,6 +531,149 @@ function ReportsTab() {
     URL.revokeObjectURL(url);
   };
 
+  const exportItemsSummary = async () => {
+    if (!pivotData) return;
+    const wb = new ExcelJS.Workbook();
+    wb.creator = "Ticket Rising";
+    wb.created = new Date();
+
+    // Sheet 1: Items Summary (for bulk purchasing)
+    const ws1 = wb.addWorksheet("Items Summary");
+    ws1.columns = [
+      { header: "SI No.", key: "si", width: 8 },
+      { header: "Item Name", key: "name", width: 25 },
+      { header: "Unit", key: "unit", width: 10 },
+      { header: "Unit Price (₹)", key: "price", width: 14 },
+      { header: "Threshold", key: "threshold", width: 10 },
+      { header: "Total Qty Ordered", key: "totalQty", width: 16 },
+      { header: "Total Amount (₹)", key: "totalPrice", width: 16 },
+    ];
+
+    // Style header
+    ws1.getRow(1).eachCell((cell) => {
+      cell.font = { bold: true, color: { argb: "FFFFFFFF" }, size: 11 };
+      cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF1D4ED8" } }; // blue-700
+      cell.alignment = { horizontal: "center", vertical: "middle", wrapText: true };
+      cell.border = { bottom: { style: "medium", color: { argb: "FF000000" } } };
+    });
+    ws1.getRow(1).height = 28;
+
+    // Add item rows (only items with qty > 0)
+    const itemsWithData = pivotData.rows.filter((r) => r.totalQty > 0);
+    itemsWithData.forEach((r, idx) => {
+      const row = ws1.addRow({
+        si: idx + 1,
+        name: r.name,
+        unit: r.unit,
+        price: r.unitPrice,
+        threshold: r.threshold,
+        totalQty: r.totalQty,
+        totalPrice: r.totalPrice,
+      });
+      const bgColor = idx % 2 === 0 ? "FFFFFFFF" : "FFEFF6FF";
+      row.eachCell((cell, colNumber) => {
+        cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: bgColor } };
+        cell.alignment = { horizontal: "center", vertical: "middle" };
+        cell.border = { bottom: { style: "thin", color: { argb: "FFE5E7EB" } } };
+        cell.font = { size: 10 };
+        if (colNumber === 2) cell.alignment = { horizontal: "left", vertical: "middle" };
+        if (colNumber >= 6) cell.font = { bold: true, size: 10 };
+      });
+    });
+
+    // Totals row
+    const totalQty = itemsWithData.reduce((s, r) => s + r.totalQty, 0);
+    const totalPrice = itemsWithData.reduce((s, r) => s + r.totalPrice, 0);
+    const totalsRow = ws1.addRow({
+      si: "", name: "", unit: "", price: "", threshold: "TOTAL",
+      totalQty, totalPrice,
+    });
+    totalsRow.eachCell((cell) => {
+      cell.font = { bold: true, size: 11 };
+      cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFF97316" } };
+      cell.alignment = { horizontal: "center", vertical: "middle" };
+      cell.border = { top: { style: "medium", color: { argb: "FF000000" } } };
+    });
+
+    // Sheet 2: Branch-wise Orders
+    const ws2 = wb.addWorksheet("Branch-wise Orders");
+    ws2.columns = [
+      { header: "Branch Name", key: "branchName", width: 25 },
+      { header: "Branch Code", key: "branchCode", width: 14 },
+      ...itemsWithData.map((r) => ({ header: r.name, key: `item_${r.itemId}`, width: 14 })),
+      { header: "Total Qty", key: "totalQty", width: 12 },
+      { header: "Total Amount (₹)", key: "totalPrice", width: 14 },
+    ];
+
+    // Style header
+    ws2.getRow(1).eachCell((cell) => {
+      cell.font = { bold: true, color: { argb: "FFFFFFFF" }, size: 10 };
+      cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF1D4ED8" } };
+      cell.alignment = { horizontal: "center", vertical: "middle", wrapText: true };
+      cell.border = { bottom: { style: "medium", color: { argb: "FF000000" } } };
+    });
+    ws2.getRow(1).height = 32;
+
+    // Add branch rows
+    pivotData.branches.forEach((br: any, idx: number) => {
+      let branchTotalQty = 0;
+      let branchTotalPrice = 0;
+      const rowData: Record<string, any> = {
+        branchName: br.branchName,
+        branchCode: br.branchCode,
+      };
+      itemsWithData.forEach((r) => {
+        const bq = r.branchQtys.find((b) => b.branchId === br.id);
+        const q = bq?.qty ?? 0;
+        const p = q * r.unitPrice;
+        rowData[`item_${r.itemId}`] = q > 0 ? q : "";
+        branchTotalQty += q;
+        branchTotalPrice += p;
+      });
+      rowData.totalQty = branchTotalQty;
+      rowData.totalPrice = branchTotalPrice;
+      const row = ws2.addRow(rowData);
+      const bgColor = idx % 2 === 0 ? "FFFFFFFF" : "FFEFF6FF";
+      row.eachCell((cell, colNumber) => {
+        cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: bgColor } };
+        cell.alignment = { horizontal: "center", vertical: "middle" };
+        cell.border = { bottom: { style: "thin", color: { argb: "FFE5E7EB" } } };
+        cell.font = { size: 10 };
+        if (colNumber <= 2) cell.alignment = { horizontal: "left", vertical: "middle" };
+        if (colNumber >= ws2.columns.length - 1) cell.font = { bold: true, size: 10 };
+      });
+    });
+
+    // Branch totals row
+    const branchTotals: Record<string, any> = { branchName: "", branchCode: "TOTAL" };
+    let grandTotalQty = 0;
+    let grandTotalPrice = 0;
+    itemsWithData.forEach((r) => {
+      branchTotals[`item_${r.itemId}`] = r.totalQty;
+      grandTotalQty += r.totalQty;
+      grandTotalPrice += r.totalPrice;
+    });
+    branchTotals.totalQty = grandTotalQty;
+    branchTotals.totalPrice = grandTotalPrice;
+    const branchTotalsRow = ws2.addRow(branchTotals);
+    branchTotalsRow.eachCell((cell) => {
+      cell.font = { bold: true, size: 11 };
+      cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFF97316" } };
+      cell.alignment = { horizontal: "center", vertical: "middle" };
+      cell.border = { top: { style: "medium", color: { argb: "FF000000" } } };
+    });
+
+    // Generate and download
+    const buffer = await wb.xlsx.writeBuffer();
+    const blob = new Blob([buffer], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `stationary-items-summary-${new Date().toISOString().slice(0, 10)}.xlsx`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
   const tableRef = useRef<HTMLDivElement>(null);
 
   const printReport = () => {
@@ -579,6 +722,7 @@ function ReportsTab() {
           {pivotData && (
             <>
               <button onClick={() => exportCsv()} className="flex items-center gap-1 px-3 py-2 border border-gray-300 rounded-lg text-sm hover:bg-gray-50"><Download className="w-4 h-4" /> Export Excel</button>
+              <button onClick={() => exportItemsSummary()} className="flex items-center gap-1 px-3 py-2 bg-blue-600 text-white rounded-lg text-sm hover:bg-blue-700"><Download className="w-4 h-4" /> Items Summary</button>
               <button onClick={printReport} className="flex items-center gap-1 px-3 py-2 border border-gray-300 rounded-lg text-sm hover:bg-gray-50"><Printer className="w-4 h-4" /> Print</button>
             </>
           )}

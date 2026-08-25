@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { createRouter, authedQuery } from "./middleware.js";
 import { getSupabaseAdmin } from "./lib/supabase.js";
-import { createTimelineEntry, createNotification, canAdminAccessTicket, getRoleAdminRecipients, notifyRoleAdmins } from "./lib/utils.js";
+import { createTimelineEntry, createNotification, canAdminAccessTicket, notifyRoleAdmins, hasTransferAccess, getUserEmail } from "./lib/utils.js";
 import { sendEmailFromUser } from "./email-service.js";
 
 function sanitizeHtml(html: string): string {
@@ -41,12 +41,15 @@ export const ticketCommentRouter = createRouter({
         .eq("id", input.ticketId)
         .maybeSingle();
       if (!ticket) throw new Error("Ticket not found");
-      if (ctx.user.type === "branch" && ticket.branchId !== ctx.user.id) {
-        throw new Error("Access denied");
+      let hasAccess = false;
+      if (ctx.user.type === "branch" && ticket.branchId === ctx.user.id) hasAccess = true;
+      else if (ctx.user.type === "admin" && canAdminAccessTicket(ctx.user, ticket.branchRole)) hasAccess = true;
+      else if (ctx.user.type === "cluster") hasAccess = true;
+      if (!hasAccess) {
+        const email = await getUserEmail(ctx.user);
+        if (await hasTransferAccess(ctx.user.id, email, input.ticketId)) hasAccess = true;
       }
-      if (ctx.user.type === "admin" && !canAdminAccessTicket(ctx.user, ticket.branchRole)) {
-        throw new Error("Access denied");
-      }
+      if (!hasAccess) throw new Error("Access denied");
 
       let query = supabase
         .from("ticket_comments")
@@ -91,12 +94,15 @@ export const ticketCommentRouter = createRouter({
         .eq("id", input.ticketId)
         .maybeSingle();
       if (!ticket) throw new Error("Ticket not found");
-      if (ctx.user.type === "branch" && ticket.branchId !== ctx.user.id) {
-        throw new Error("Access denied");
+      let hasAccess = false;
+      if (ctx.user.type === "branch" && ticket.branchId === ctx.user.id) hasAccess = true;
+      else if (ctx.user.type === "admin" && canAdminAccessTicket(ctx.user, ticket.branchRole)) hasAccess = true;
+      else if (ctx.user.type === "cluster") hasAccess = true;
+      if (!hasAccess) {
+        const email = await getUserEmail(ctx.user);
+        if (await hasTransferAccess(ctx.user.id, email, input.ticketId)) hasAccess = true;
       }
-      if (ctx.user.type === "admin" && !canAdminAccessTicket(ctx.user, ticket.branchRole)) {
-        throw new Error("Access denied");
-      }
+      if (!hasAccess) throw new Error("Access denied");
 
       if (ctx.user.type === "branch" && input.isInternal) {
         throw new Error("Branch users cannot create internal notes");
@@ -169,7 +175,7 @@ export const ticketCommentRouter = createRouter({
           excludeId: ctx.user.id,
         });
 
-        // Email the branch user and the other admins in the matching bucket
+        // Email the branch user only (not other admins)
         try {
           const { data: branchProfile } = await supabase
             .from("profiles")
@@ -183,17 +189,6 @@ export const ticketCommentRouter = createRouter({
               `Re: ${ticket.ticketNumber} - ${ticket.subject}`,
               emailBody(actorName)
             );
-          }
-          const admins = await getRoleAdminRecipients(ticket.branchRole, { activeOnly: true, excludeId: ctx.user.id });
-          for (const admin of admins) {
-            if (admin.email) {
-              await sendEmailFromUser(
-                ctx.user.id,
-                admin.email,
-                `Re: ${ticket.ticketNumber} - ${ticket.subject}`,
-                emailBody(actorName)
-              );
-            }
           }
         } catch (e) { console.error("Reply email failed:", e); }
       }

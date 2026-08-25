@@ -89,9 +89,34 @@ drop trigger if exists trg_stationary_line_total on public.stationary_order_item
 create trigger trg_stationary_line_total before insert or update on public.stationary_order_items
   for each row execute function public.set_stationary_line_total();
 
--- RLS: disable row level security (server uses service-role key which bypasses RLS).
--- If you later want browser access, enable RLS + write policies here.
-alter table public.stationary_items disable row level security;
-alter table public.stationary_portal_settings disable row level security;
-alter table public.stationary_orders disable row level security;
-alter table public.stationary_order_items disable row level security;
+-- RLS: enable row level security with service-role policies.
+-- Service role (used by the server) bypasses RLS automatically.
+-- Authenticated users get read access for portal UI.
+alter table public.stationary_items enable row level security;
+alter table public.stationary_portal_settings enable row level security;
+alter table public.stationary_orders enable row level security;
+alter table public.stationary_order_items enable row level security;
+
+create policy "Service role full access on stationary_items"
+  on public.stationary_items for all
+  using (auth.role() = 'service_role');
+
+create policy "Service role full access on stationary_portal_settings"
+  on public.stationary_portal_settings for all
+  using (auth.role() = 'service_role');
+
+create policy "Service role full access on stationary_orders"
+  on public.stationary_orders for all
+  using (auth.role() = 'service_role');
+
+create policy "Service role full access on stationary_order_items"
+  on public.stationary_order_items for all
+  using (auth.role() = 'service_role');
+
+create policy "Authenticated users can read stationary items"
+  on public.stationary_items for select
+  using (auth.role() = 'authenticated');
+
+create policy "Authenticated users can read portal settings"
+  on public.stationary_portal_settings for select
+  using (auth.role() = 'authenticated');

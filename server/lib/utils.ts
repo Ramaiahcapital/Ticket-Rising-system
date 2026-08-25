@@ -187,6 +187,34 @@ export function canAdminAccessTicket(user: UnifiedUser | undefined, ticketBranch
   return ticketBranchRole === user.adminRole;
 }
 
+/** Check if a user has transfer access to a ticket (by email match on ticket_transfers). */
+export async function hasTransferAccess(
+  _userId: string,
+  userMail: string | null,
+  ticketId: string,
+): Promise<boolean> {
+  if (!userMail) return false;
+  const supabase = getSupabaseAdmin();
+  const { data } = await (supabase as any)
+    .from("ticket_transfers")
+    .select("id")
+    .eq("ticket_id", ticketId)
+    .eq("to_email", userMail.toLowerCase().trim())
+    .eq("status", "accepted")
+    .maybeSingle();
+  return !!data;
+}
+
+/** Get user email from profile (for any user type). */
+export async function getUserEmail(
+  user: UnifiedUser,
+): Promise<string | null> {
+  if (user.type === "branch") return user.email;
+  const supabase = getSupabaseAdmin();
+  const { data } = await supabase.from("profiles").select("email").eq("id", user.id).maybeSingle();
+  return data?.email ?? null;
+}
+
 /**
  * Admins who should receive role-specific notifications/emails for a ticket:
  * the sub-admins in the matching bucket plus every main admin.

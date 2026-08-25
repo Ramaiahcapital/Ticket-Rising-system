@@ -25,6 +25,7 @@ import TicketFormConfig from "@/pages/TicketFormConfig";
 import RolesManagement from "@/pages/RolesManagement";
 import EmailConnectPage from "@/pages/EmailConnectPage";
 import AdminUsersPage from "@/pages/AdminUsersPage";
+import TransferAccept from "@/pages/TransferAccept";
 import NotFound from "@/pages/NotFound";
 
 function ProtectedRoute({ children, requireAdmin = false, requireMainAdmin = false }: { children: React.ReactNode; requireAdmin?: boolean; requireMainAdmin?: boolean }) {
@@ -193,6 +194,14 @@ export default function App() {
         element={
           <ProtectedRoute>
             <EmailConnectPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/transfer/:token"
+        element={
+          <ProtectedRoute>
+            <TransferAccept />
           </ProtectedRoute>
         }
       />

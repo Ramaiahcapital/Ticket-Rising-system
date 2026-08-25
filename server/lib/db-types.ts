@@ -371,3 +371,15 @@ export type TicketFormConfigRow = {
   createdAt: string;
   updatedAt: string;
 };
+
+/** A ticket transfer record. */
+export type TicketTransferRow = {
+  id: string;
+  ticketId: string;
+  fromUserId: string;
+  toEmail: string;
+  token: string;
+  status: "pending" | "accepted" | "revoked";
+  createdAt: string;
+  acceptedAt: string | null;
+};
