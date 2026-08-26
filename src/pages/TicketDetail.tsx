@@ -15,7 +15,7 @@ import {
 export default function TicketDetail() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const { isAdmin } = useAuth();
+  const { isAdmin, isTransfer } = useAuth();
   const { getColor } = useBranchRoles();
   const ticketId = id ?? "";
 
@@ -294,7 +294,7 @@ export default function TicketDetail() {
               {replyOpen ? "Close Reply" : "Reply"}
             </button>
 
-            {isAdmin && (
+            {(isAdmin || isTransfer) && (
               <button
                 onClick={() => {
                   if (confirm("Send an email notification to the branch user about your latest reply?")) {
@@ -323,7 +323,7 @@ export default function TicketDetail() {
             </button>
             )}
 
-            {isAdmin && (
+            {(isAdmin || isTransfer) && (
               <div className="relative">
               <button
                 onClick={() => setStatusDropdown(!statusDropdown)}

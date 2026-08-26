@@ -853,7 +853,7 @@ export const ticketRouter = createRouter({
     }),
 
   /** Manually notify the branch user via email about an admin reply. */
-  notifyBranch: adminQuery
+  notifyBranch: authedQuery
     .input(z.object({ ticketId: z.string() }))
     .mutation(async ({ ctx, input }) => {
       const supabase = getSupabaseAdmin();
@@ -863,9 +863,14 @@ export const ticketRouter = createRouter({
         .eq("id", input.ticketId)
         .maybeSingle();
       if (!ticket) throw new Error("Ticket not found");
-      if (!canAdminAccessTicket(ctx.user, ticket.branchRole)) {
-        throw new Error("Access denied");
+
+      let hasAccess = false;
+      if (ctx.user.type === "admin" && canAdminAccessTicket(ctx.user, ticket.branchRole)) hasAccess = true;
+      else if (ctx.user.type === "transfer") {
+        const email = await getUserEmail(ctx.user);
+        if (await hasTransferAccess(ctx.user.id, email, input.ticketId)) hasAccess = true;
       }
+      if (!hasAccess) throw new Error("Access denied");
 
       const { data: branchProfile } = await supabase
         .from("profiles")
