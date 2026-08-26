@@ -48,6 +48,10 @@ const clusterNavItems: NavItem[] = [
 
 const transferNavItems: NavItem[] = [
   { label: "My Tickets", icon: Ticket, path: "/tickets" },
+];
+
+const stationaryAdminNavItems: NavItem[] = [
+  { label: "Stationary", icon: Package, path: "/stationary/admin" },
   { label: "Email Settings", icon: Mail, path: "/email-settings" },
 ];
 
@@ -80,6 +84,7 @@ export default function Sidebar({ isAdmin, mobile, onClose }: SidebarProps) {
   const isSettingsChild = settingsChildren.some((c) => c.path === location.pathname);
 
   const isMainAdmin = user?.type === "admin" && !user.adminRole;
+  const isStationaryAdmin = user?.type === "admin" && (user as any).adminRole === "Stationary Admin";
 
   const go = (path: string) => {
     navigate(path);
@@ -124,7 +129,25 @@ export default function Sidebar({ isAdmin, mobile, onClose }: SidebarProps) {
 
       {/* Navigation */}
       <nav className="flex-1 px-3 py-4 space-y-1 overflow-auto">
-        {isAdmin ? (
+        {isStationaryAdmin ? (
+          stationaryAdminNavItems.map((item) => {
+            const isActive = location.pathname === item.path;
+            return (
+              <button
+                key={item.path}
+                onClick={() => go(item.path)}
+                className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all ${
+                  isActive
+                    ? "bg-red-50 text-red-600 border-l-[3px] border-red-600"
+                    : "text-gray-600 hover:bg-gray-50 hover:text-gray-900"
+                }`}
+              >
+                <item.icon className={`w-5 h-5 ${isActive ? "text-red-600" : "text-gray-400"}`} />
+                {item.label}
+              </button>
+            );
+          })
+        ) : isAdmin ? (
           <>
             <button onClick={() => go("/")} className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all ${location.pathname === "/" ? "bg-red-50 text-red-600 border-l-[3px] border-red-600" : "text-gray-600 hover:bg-gray-50 hover:text-gray-900"}`}>
               <LayoutDashboard className={`w-5 h-5 ${location.pathname === "/" ? "text-red-600" : "text-gray-400"}`} /> Dashboard
@@ -278,8 +301,12 @@ export default function Sidebar({ isAdmin, mobile, onClose }: SidebarProps) {
               <p className="text-sm font-medium text-gray-800 truncate">{user?.name || "Admin"}</p>
               {user?.type === "admin" && user.adminRole ? (
                 <div className="flex items-center gap-2 mt-1">
-                  <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-blue-50 text-blue-700">{user.adminRole}</span>
-                  <span className="text-[10px] text-gray-400 truncate">Sub-Admin</span>
+                  <span className={`px-1.5 py-0.5 rounded text-[10px] font-semibold ${
+                    user.adminRole === "Stationary Admin" ? "bg-amber-50 text-amber-700" : "bg-blue-50 text-blue-700"
+                  }`}>{user.adminRole}</span>
+                  <span className="text-[10px] text-gray-400 truncate">
+                    {user.adminRole === "Stationary Admin" ? "Stationary" : "Sub-Admin"}
+                  </span>
                 </div>
               ) : (
                 <p className="text-xs text-gray-500 capitalize">{user?.type || "admin"} User</p>

@@ -29,7 +29,19 @@ import TransferUsersPage from "@/pages/TransferUsersPage";
 import TransferAccept from "@/pages/TransferAccept";
 import NotFound from "@/pages/NotFound";
 
-function ProtectedRoute({ children, requireAdmin = false, requireMainAdmin = false }: { children: React.ReactNode; requireAdmin?: boolean; requireMainAdmin?: boolean }) {
+function ProtectedRoute({
+  children,
+  requireAdmin = false,
+  requireMainAdmin = false,
+  requireStationaryAdmin = false,
+  blockTransfer = false,
+}: {
+  children: React.ReactNode;
+  requireAdmin?: boolean;
+  requireMainAdmin?: boolean;
+  requireStationaryAdmin?: boolean;
+  blockTransfer?: boolean;
+}) {
   const { user, isLoading } = useAuth();
 
   if (isLoading) {
@@ -44,7 +56,15 @@ function ProtectedRoute({ children, requireAdmin = false, requireMainAdmin = fal
     return <Navigate to="/" replace />;
   }
 
-  if (requireMainAdmin) {
+  if (blockTransfer && user.type === "transfer") {
+    return <Navigate to="/" replace />;
+  }
+
+  if (requireStationaryAdmin) {
+    const isMainAdminUser = user.type === "admin" && !user.adminRole;
+    const isStationaryAdminUser = user.type === "admin" && (user as any).adminRole === "Stationary Admin";
+    if (!isMainAdminUser && !isStationaryAdminUser) return <Navigate to="/" replace />;
+  } else if (requireMainAdmin) {
     if (user.type !== "admin" || user.adminRole) {
       return <Navigate to="/" replace />;
     }
@@ -73,7 +93,7 @@ export default function App() {
       <Route
         path="/tickets/new"
         element={
-          <ProtectedRoute>
+          <ProtectedRoute blockTransfer>
             <CreateTicket />
           </ProtectedRoute>
         }
@@ -129,7 +149,7 @@ export default function App() {
       <Route
         path="/stationary/admin"
         element={
-          <ProtectedRoute requireMainAdmin>
+          <ProtectedRoute requireStationaryAdmin>
             <StationaryAdmin />
           </ProtectedRoute>
         }
@@ -137,7 +157,7 @@ export default function App() {
       <Route
         path="/stationary"
         element={
-          <ProtectedRoute>
+          <ProtectedRoute blockTransfer>
             <StationaryPortal />
           </ProtectedRoute>
         }
@@ -234,7 +254,12 @@ function HomeRoute() {
 
 function RoleBasedDashboard() {
   const { user } = useAuth();
-  if (user?.type === "admin") return <AdminDashboard />;
+  if (user?.type === "admin") {
+    if ((user as any).adminRole === "Stationary Admin") {
+      return <StationaryAdmin />;
+    }
+    return <AdminDashboard />;
+  }
   if (user?.type === "cluster") return <ClusterDashboard />;
   if (user?.type === "transfer") return <TicketList />;
   return <BranchDashboard />;

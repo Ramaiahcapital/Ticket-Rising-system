@@ -180,6 +180,7 @@ export default function AdminUsersPage() {
                 <label className="block text-xs font-medium text-gray-700 mb-1">Role / Department *</label>
                 <select value={form.adminRole} onChange={e => setForm({...form, adminRole: e.target.value})} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:border-red-500 outline-none bg-white">
                   <option value="" disabled>Select a role...</option>
+                  <option value="Stationary Admin">Stationary Admin</option>
                   {activeRoles.map((r) => (
                     <option key={r.id} value={r.name}>{r.name}</option>
                   ))}

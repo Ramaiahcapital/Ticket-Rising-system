@@ -5,7 +5,6 @@ import { useAuth } from "@/hooks/useAuth";
 import { useBranchRoles } from "@/hooks/useBranchRoles";
 import {
   Plus, Search, Filter, Eye, Ticket, Download, Loader2,
-  Forward,
 } from "lucide-react";
 import * as XLSX from "xlsx";
 
@@ -13,7 +12,7 @@ export default function TicketList() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const deptParam = searchParams.get("department");
-  const { isAdmin } = useAuth();
+  const { isAdmin, isTransfer } = useAuth();
   const { activeRoles, getColor } = useBranchRoles();
   const [displayLimit, setDisplayLimit] = useState(10);
   const [search, setSearch] = useState("");
@@ -25,7 +24,6 @@ export default function TicketList() {
   const [showFilters, setShowFilters] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
   const [activeBucket, setActiveBucket] = useState<string>(deptParam ?? "all");
-  const [viewTab, setViewTab] = useState<"tickets" | "transferred">("tickets");
   const limit = 10;
 
   const { data: ticketsData, isLoading } = trpc.ticket.list.useQuery({
@@ -42,10 +40,6 @@ export default function TicketList() {
   const { data: statuses } = trpc.ticketStatus.listEnabled.useQuery();
   const { data: branches } = trpc.branch.listAll.useQuery();
   const { data: deptCounts } = trpc.ticket.departmentCounts.useQuery(undefined, { enabled: isAdmin });
-  const { data: transferredData, isLoading: transferredLoading } = trpc.ticket.listTransferred.useQuery(
-    { page: 1, limit: displayLimit },
-    { enabled: viewTab === "transferred" }
-  );
 
   const exportQuery = trpc.ticket.listExport.useQuery({
     search: search || undefined,
@@ -127,25 +121,29 @@ export default function TicketList() {
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-gray-800">Tickets</h1>
+          <h1 className="text-2xl font-bold text-gray-800">
+            {isTransfer ? "Transferred Tickets" : "Tickets"}
+          </h1>
           <p className="text-sm text-gray-500 mt-1">
-            {isAdmin ? "Manage and track all support tickets" : "View and manage your tickets"}
+            {isAdmin ? "Manage and track all support tickets" : isTransfer ? "Tickets assigned to you" : "View and manage your tickets"}
           </p>
         </div>
         <div className="flex gap-2">
-          <button
-            onClick={handleExport}
-            disabled={isExporting}
-            className="flex items-center gap-2 px-4 py-2 border border-gray-300 text-sm font-medium rounded-lg hover:bg-gray-50 transition-colors disabled:opacity-50"
-          >
-            {isExporting ? (
-              <Loader2 className="w-4 h-4 animate-spin" />
-            ) : (
-              <Download className="w-4 h-4" />
-            )}
-            {isExporting ? "Exporting..." : "Export Excel"}
-          </button>
-          {!isAdmin && (
+          {!isTransfer && (
+            <button
+              onClick={handleExport}
+              disabled={isExporting}
+              className="flex items-center gap-2 px-4 py-2 border border-gray-300 text-sm font-medium rounded-lg hover:bg-gray-50 transition-colors disabled:opacity-50"
+            >
+              {isExporting ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : (
+                <Download className="w-4 h-4" />
+              )}
+              {isExporting ? "Exporting..." : "Export Excel"}
+            </button>
+          )}
+          {!isAdmin && !isTransfer && (
             <button
               onClick={() => navigate("/tickets/new")}
               className="flex items-center gap-2 px-4 py-2 bg-red-600 hover:bg-red-700 text-white text-sm font-medium rounded-lg transition-colors"
@@ -155,37 +153,6 @@ export default function TicketList() {
             </button>
           )}
         </div>
-      </div>
-
-      {/* View Tabs */}
-      <div className="flex gap-2">
-        <button
-          onClick={() => setViewTab("tickets")}
-          className={`flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium transition-all border ${
-            viewTab === "tickets"
-              ? "border-red-600 bg-red-50 text-red-600"
-              : "border-gray-200 bg-white text-gray-600 hover:border-gray-300 hover:bg-gray-50"
-          }`}
-        >
-          <Ticket className="w-4 h-4" />
-          My Tickets
-        </button>
-        <button
-          onClick={() => setViewTab("transferred")}
-          className={`flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium transition-all border ${
-            viewTab === "transferred"
-              ? "border-purple-600 bg-purple-50 text-purple-600"
-              : "border-gray-200 bg-white text-gray-600 hover:border-gray-300 hover:bg-gray-50"
-          }`}
-        >
-          <Forward className="w-4 h-4" />
-          Transferred to Me
-          {transferredData && transferredData.total > 0 && (
-            <span className="ml-1 px-1.5 py-0.5 rounded text-xs font-semibold bg-purple-100 text-purple-600">
-              {transferredData.total}
-            </span>
-          )}
-        </button>
       </div>
 
       {/* Department Bucket Tabs (admin only) */}
@@ -238,13 +205,15 @@ export default function TicketList() {
               className="w-full pl-10 pr-4 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-red-500/20 focus:border-red-500"
             />
           </div>
-          <button
-            onClick={() => setShowFilters(!showFilters)}
-            className="flex items-center gap-2 px-4 py-2.5 border border-gray-300 rounded-lg text-sm text-gray-700 hover:bg-gray-50 transition-colors"
-          >
-            <Filter className="w-4 h-4" />
-            Filters
-          </button>
+          {!isTransfer && (
+            <button
+              onClick={() => setShowFilters(!showFilters)}
+              className="flex items-center gap-2 px-4 py-2.5 border border-gray-300 rounded-lg text-sm text-gray-700 hover:bg-gray-50 transition-colors"
+            >
+              <Filter className="w-4 h-4" />
+              Filters
+            </button>
+          )}
         </div>
 
         {showFilters && (
@@ -259,26 +228,30 @@ export default function TicketList() {
                 <option key={s.id} value={s.id}>{s.name}</option>
               ))}
             </select>
-            <select
-              value={branchId || ""}
-              onChange={(e) => { setBranchId(e.target.value || undefined); setDisplayLimit(10); }}
-              className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:border-red-500"
-            >
-              <option value="">All Branches</option>
-              {branches?.map(b => (
-                <option key={b.id} value={b.id}>{b.name}</option>
-              ))}
-            </select>
-            <select
-              value={branchRole || ""}
-              onChange={(e) => { setBranchRole(e.target.value || undefined); setDisplayLimit(10); }}
-              className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:border-red-500"
-            >
-              <option value="">All Departments</option>
-              {activeRoles.map(r => (
-                <option key={r.id} value={r.name}>{r.name}</option>
-              ))}
-            </select>
+            {isAdmin && (
+              <select
+                value={branchId || ""}
+                onChange={(e) => { setBranchId(e.target.value || undefined); setDisplayLimit(10); }}
+                className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:border-red-500"
+              >
+                <option value="">All Branches</option>
+                {branches?.map(b => (
+                  <option key={b.id} value={b.id}>{b.name}</option>
+                ))}
+              </select>
+            )}
+            {isAdmin && (
+              <select
+                value={branchRole || ""}
+                onChange={(e) => { setBranchRole(e.target.value || undefined); setDisplayLimit(10); }}
+                className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:border-red-500"
+              >
+                <option value="">All Departments</option>
+                {activeRoles.map(r => (
+                  <option key={r.id} value={r.name}>{r.name}</option>
+                ))}
+              </select>
+            )}
             <input
               type="date"
               value={dateFrom}
@@ -304,7 +277,6 @@ export default function TicketList() {
       </div>
 
       {/* Table */}
-      {viewTab === "tickets" && (
       <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full">
@@ -335,8 +307,10 @@ export default function TicketList() {
                   <td colSpan={isAdmin ? 7 : 5} className="py-12 text-center">
                     <div className="flex flex-col items-center gap-2">
                       <Ticket className="w-10 h-10 text-gray-300" />
-                      <p className="text-gray-500 text-sm">No tickets found</p>
-                      {!isAdmin && (
+                      <p className="text-gray-500 text-sm">
+                        {isTransfer ? "No tickets assigned to you" : "No tickets found"}
+                      </p>
+                      {!isAdmin && !isTransfer && (
                         <button
                           onClick={() => navigate("/tickets/new")}
                           className="text-red-600 text-sm hover:underline"
@@ -418,99 +392,6 @@ export default function TicketList() {
           </div>
         )}
       </div>
-      )}
-      {viewTab === "transferred" && (
-      <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full">
-            <thead>
-              <tr className="bg-gray-50 border-b border-gray-200">
-                <th className="text-left py-3 px-4 text-xs font-semibold text-gray-500 uppercase">Ticket ID</th>
-                <th className="text-left py-3 px-4 text-xs font-semibold text-gray-500 uppercase">Subject</th>
-                <th className="text-left py-3 px-4 text-xs font-semibold text-gray-500 uppercase">Status</th>
-                <th className="text-left py-3 px-4 text-xs font-semibold text-gray-500 uppercase">Department</th>
-                <th className="text-left py-3 px-4 text-xs font-semibold text-gray-500 uppercase">Transferred</th>
-                <th className="text-left py-3 px-4 text-xs font-semibold text-gray-500 uppercase">Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {transferredLoading ? (
-                Array.from({ length: 3 }).map((_, i) => (
-                  <tr key={i} className="border-b border-gray-50">
-                    {Array.from({ length: 6 }).map((_, j) => (
-                      <td key={j} className="py-3 px-4">
-                        <div className="h-4 bg-gray-200 rounded animate-pulse w-3/4" />
-                      </td>
-                    ))}
-                  </tr>
-                ))
-              ) : transferredData?.items?.length === 0 ? (
-                <tr>
-                  <td colSpan={6} className="py-12 text-center">
-                    <div className="flex flex-col items-center gap-2">
-                      <Forward className="w-10 h-10 text-gray-300" />
-                      <p className="text-gray-500 text-sm">No tickets transferred to you</p>
-                    </div>
-                  </td>
-                </tr>
-              ) : (
-                transferredData?.items?.map((ticket: any) => (
-                  <tr key={ticket.id} className="border-b border-gray-50 hover:bg-gray-50 transition-colors">
-                    <td className="py-3 px-4">
-                      <button
-                        onClick={() => navigate(`/tickets/${ticket.id}`)}
-                        className="text-sm font-mono text-purple-600 hover:underline"
-                      >
-                        {ticket.ticketNumber}
-                      </button>
-                    </td>
-                    <td className="py-3 px-4 text-sm text-gray-800 max-w-[200px] truncate">{ticket.subject}</td>
-                    <td className="py-3 px-4">
-                      {ticket.status
-                        ? getStatusBadge(ticket.status.name, ticket.status.color)
-                        : <span className="text-gray-400 text-sm">-</span>
-                      }
-                    </td>
-                    <td className="py-3 px-4">
-                      {ticket.branchRole
-                        ? getBranchRoleBadge(ticket.branchRole)
-                        : <span className="text-gray-400 text-sm">-</span>
-                      }
-                    </td>
-                    <td className="py-3 px-4 text-sm text-gray-500">
-                      {new Date(ticket.transferredAt ?? new Date()).toLocaleDateString()}
-                    </td>
-                    <td className="py-3 px-4">
-                      <button
-                        onClick={() => navigate(`/tickets/${ticket.id}`)}
-                        className="p-1.5 hover:bg-gray-100 rounded-lg text-gray-500 hover:text-purple-600 transition-colors"
-                      >
-                        <Eye className="w-4 h-4" />
-                      </button>
-                    </td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
-        {transferredData && transferredData.total > 0 && (
-          <div className="flex flex-col items-center gap-2 px-4 py-4 border-t border-gray-200">
-            <p className="text-sm text-gray-500">
-              Showing {Math.min(displayLimit, transferredData.total)} of {transferredData.total} transferred tickets
-            </p>
-            {transferredData.total > displayLimit && (
-              <button
-                onClick={() => setDisplayLimit(d => d + limit)}
-                className="px-6 py-2 border border-gray-300 text-sm font-medium rounded-lg hover:bg-gray-50 transition-colors"
-              >
-                Load More
-              </button>
-            )}
-          </div>
-        )}
-      </div>
-      )}
     </div>
   );
 }
