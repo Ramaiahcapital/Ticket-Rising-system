@@ -63,7 +63,8 @@ function ProtectedRoute({
   if (requireStationaryAdmin) {
     const isMainAdminUser = user.type === "admin" && !user.adminRole;
     const isStationaryAdminUser = user.type === "admin" && (user as any).adminRole === "Stationary Admin";
-    if (!isMainAdminUser && !isStationaryAdminUser) return <Navigate to="/" replace />;
+    const isTransferWithAccess = user.type === "transfer" && (user as any).stationaryAccess;
+    if (!isMainAdminUser && !isStationaryAdminUser && !isTransferWithAccess) return <Navigate to="/" replace />;
   } else if (requireMainAdmin) {
     if (user.type !== "admin" || user.adminRole) {
       return <Navigate to="/" replace />;

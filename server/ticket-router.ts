@@ -57,6 +57,18 @@ export const ticketRouter = createRouter({
 
       if (ctx.user.type === "branch") {
         query = query.eq("branchId", ctx.user.id);
+      } else if (ctx.user.type === "cluster") {
+        const clusterId = (ctx.user as any).clusterId;
+        const ids = [ctx.user.id];
+        if (clusterId) {
+          const { data: branchUsers } = await supabase
+            .from("profiles")
+            .select("id")
+            .eq("clusterId", clusterId)
+            .eq("role", "branch");
+          for (const b of branchUsers ?? []) ids.push(b.id);
+        }
+        query = query.in("branchId", ids);
       } else if (ctx.user.type === "transfer") {
         const db = supabase as any;
         const { data: transfers } = await db
@@ -164,7 +176,7 @@ export const ticketRouter = createRouter({
     return result;
   }),
 
-  listExport: adminQuery
+  listExport: authedQuery
     .input(
       z.object({
         search: z.string().optional(),
@@ -180,6 +192,32 @@ export const ticketRouter = createRouter({
       const params = input || {};
 
       let query = supabase.from("tickets").select("*", { count: "exact" });
+
+      if (ctx.user.type === "branch") {
+        query = query.eq("branchId", ctx.user.id);
+      } else if (ctx.user.type === "cluster") {
+        const clusterId = (ctx.user as any).clusterId;
+        const ids = [ctx.user.id];
+        if (clusterId) {
+          const { data: branchUsers } = await supabase
+            .from("profiles")
+            .select("id")
+            .eq("clusterId", clusterId)
+            .eq("role", "branch");
+          for (const b of branchUsers ?? []) ids.push(b.id);
+        }
+        query = query.in("branchId", ids);
+      } else if (ctx.user.type === "transfer") {
+        const db = supabase as any;
+        const { data: transfers } = await db
+          .from("ticket_transfers")
+          .select("ticket_id")
+          .eq("to_email", ctx.user.email?.toLowerCase().trim() || "")
+          .eq("status", "accepted");
+        const ticketIds = (transfers ?? []).map((t: any) => t.ticket_id);
+        if (ticketIds.length === 0) return [];
+        query = query.in("id", ticketIds);
+      }
 
       const scope = getTicketScopeFilter(ctx.user);
       if (scope) query = query.eq("branchRole", scope.branchRole);
@@ -275,8 +313,8 @@ export const ticketRouter = createRouter({
     .mutation(async ({ ctx, input }) => {
       const supabase = getSupabaseAdmin();
 
-      if (ctx.user.type !== "branch") {
-        throw new Error("Only branch users can create tickets");
+      if (ctx.user.type !== "branch" && ctx.user.type !== "cluster") {
+        throw new Error("Only branch and cluster users can create tickets");
       }
 
       if (input.branchRole) {
@@ -866,6 +904,7 @@ export const ticketRouter = createRouter({
 
       let hasAccess = false;
       if (ctx.user.type === "admin" && canAdminAccessTicket(ctx.user, ticket.branchRole)) hasAccess = true;
+      else if (ctx.user.type === "cluster") hasAccess = true;
       else if (ctx.user.type === "transfer") {
         const email = await getUserEmail(ctx.user);
         if (await hasTransferAccess(ctx.user.id, email, input.ticketId)) hasAccess = true;

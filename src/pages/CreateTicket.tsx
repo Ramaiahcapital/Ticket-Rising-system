@@ -52,11 +52,11 @@ export default function CreateTicket() {
 
   const { data: formConfig } = trpc.ticket.getFormConfig.useQuery(
     { role: selectedRole || undefined },
-    { enabled: (user as any)?.type === "branch" && !!selectedRole }
+    { enabled: ((user as any)?.type === "branch" || (user as any)?.type === "cluster") && !!selectedRole }
   );
   const { data: portalEnabledMap } = trpc.ticket.getPortalEnabled.useQuery(
     undefined,
-    { enabled: (user as any)?.type === "branch" }
+    { enabled: (user as any)?.type === "branch" || (user as any)?.type === "cluster" }
   );
 
   const formConfigData = Array.isArray(formConfig) ? formConfig[0] : formConfig;

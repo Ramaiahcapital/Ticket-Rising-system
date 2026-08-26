@@ -42,6 +42,8 @@ const branchNavItems: NavItem[] = [
 
 const clusterNavItems: NavItem[] = [
   { label: "Dashboard", icon: LayoutDashboard, path: "/" },
+  { label: "My Tickets", icon: Ticket, path: "/tickets" },
+  { label: "Create Ticket", icon: Ticket, path: "/tickets/new" },
   { label: "Orders", icon: Package, path: "/cluster/orders" },
   { label: "Email Settings", icon: Mail, path: "/email-settings" },
 ];
@@ -49,7 +51,7 @@ const clusterNavItems: NavItem[] = [
 const transferNavBase: NavItem[] = [
   { label: "My Tickets", icon: Ticket, path: "/tickets" },
 ];
-const transferStationaryItem: NavItem = { label: "Stationary", icon: Package, path: "/stationary" };
+const transferStationaryItem: NavItem = { label: "Stationary", icon: Package, path: "/stationary/admin" };
 
 const stationaryAdminNavItems: NavItem[] = [
   { label: "Stationary", icon: Package, path: "/stationary/admin" },
