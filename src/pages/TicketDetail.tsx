@@ -406,7 +406,7 @@ export default function TicketDetail() {
                             )}
                           </p>
                           <p className="text-[10px] text-gray-400">
-                            {ticket.branch?.branchName || (ticket as any).createdByProfile?.branchName || (ticket as any).createdByProfile?.name || ""} · {new Date(ticket.createdAt ?? new Date()).toLocaleDateString()} {new Date(ticket.createdAt ?? new Date()).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                            {ticket.branch?.branchName || ((ticket as any).creatorCluster ? `Cluster: ${(ticket as any).creatorCluster.name}` : null) || (ticket as any).createdByProfile?.name || ""} · {new Date(ticket.createdAt ?? new Date()).toLocaleDateString()} {new Date(ticket.createdAt ?? new Date()).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
                           </p>
                         </div>
                       </div>
@@ -637,7 +637,12 @@ export default function TicketDetail() {
               <div className="flex items-center gap-2">
                 <Building2 className="w-4 h-4 text-gray-400" />
                 <span className="text-gray-500">Branch:</span>
-                <span className="ml-auto">{ticket.branch?.branchName || (ticket as any).createdByProfile?.branchName || (ticket as any).createdByProfile?.name || "-"}</span>
+                <span className="ml-auto">
+                  {ticket.branch?.branchName
+                    || ((ticket as any).creatorCluster ? `Cluster: ${(ticket as any).creatorCluster.name}` : null)
+                    || (ticket as any).createdByProfile?.name
+                    || "-"}
+                </span>
               </div>
               {ticket.branchRole && (
                 <div className="flex items-center gap-2">
