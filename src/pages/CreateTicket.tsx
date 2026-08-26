@@ -39,16 +39,13 @@ export default function CreateTicket() {
 
   const utils = trpc.useUtils();
 
-  // Default the role picker to the user's saved role, else the first active role
+  // Role picker stays blank until user manually selects one
   useEffect(() => {
-    if (activeRoles.length === 0) return;
-    setSelectedRole((prev) => {
-      if (prev && activeRoles.some((r) => r.name === prev)) return prev;
-      const saved = (user as any)?.branchRole as string | undefined;
-      if (saved && activeRoles.some((r) => r.name === saved)) return saved;
-      return activeRoles[0].name;
-    });
-  }, [activeRoles, user]);
+    // Clear selection if previously selected role is no longer active
+    if (selectedRole && activeRoles.length > 0 && !activeRoles.some((r) => r.name === selectedRole)) {
+      setSelectedRole("");
+    }
+  }, [activeRoles]);
 
   const { data: formConfig } = trpc.ticket.getFormConfig.useQuery(
     { role: selectedRole || undefined },
@@ -292,6 +289,7 @@ export default function CreateTicket() {
               onChange={(e) => handleRoleChange(e.target.value)}
               className="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-red-500/20 focus:border-red-500 transition-colors appearance-none"
             >
+              <option value="" disabled>Select your role</option>
               {activeRoles.map((r) => (
                 <option key={r.id} value={r.name}>{r.name}</option>
               ))}
