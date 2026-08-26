@@ -46,9 +46,10 @@ const clusterNavItems: NavItem[] = [
   { label: "Email Settings", icon: Mail, path: "/email-settings" },
 ];
 
-const transferNavItems: NavItem[] = [
+const transferNavBase: NavItem[] = [
   { label: "My Tickets", icon: Ticket, path: "/tickets" },
 ];
+const transferStationaryItem: NavItem = { label: "Stationary", icon: Package, path: "/stationary" };
 
 const stationaryAdminNavItems: NavItem[] = [
   { label: "Stationary", icon: Package, path: "/stationary/admin" },
@@ -68,7 +69,7 @@ const settingsChildren: NavItem[] = [
 export default function Sidebar({ isAdmin, mobile, onClose }: SidebarProps) {
   const navigate = useNavigate();
   const location = useLocation();
-  const { logout, user, isCluster, isTransfer } = useAuth();
+  const { logout, user, isCluster, isTransfer, hasStationaryAccess } = useAuth();
   const { getColor } = useBranchRoles();
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
   const [showChangePassword, setShowChangePassword] = useState(false);
@@ -232,7 +233,11 @@ export default function Sidebar({ isAdmin, mobile, onClose }: SidebarProps) {
             );
           })
         ) : isTransfer ? (
-          transferNavItems.map((item) => {
+          (() => {
+            const transferNavItems = hasStationaryAccess
+              ? [...transferNavBase, transferStationaryItem]
+              : transferNavBase;
+            return transferNavItems.map((item) => {
             const isActive = location.pathname === item.path;
             return (
               <button
@@ -248,7 +253,8 @@ export default function Sidebar({ isAdmin, mobile, onClose }: SidebarProps) {
                 {item.label}
               </button>
             );
-          })
+          });
+          })()
         ) : (
           branchNavItems.map((item) => {
             const isActive = location.pathname === item.path;

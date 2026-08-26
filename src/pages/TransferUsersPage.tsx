@@ -1,11 +1,11 @@
 import { useState } from "react";
 import { trpc } from "@/providers/trpc";
-import { Plus, Pencil, Trash2, X, Loader2, Users, Search, KeyRound, ToggleLeft, ToggleRight } from "lucide-react";
+import { Plus, Pencil, Trash2, X, Loader2, Users, Search, KeyRound, ToggleLeft, ToggleRight, Package } from "lucide-react";
 
 export default function TransferUsersPage() {
   const [showModal, setShowModal] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [form, setForm] = useState({ name: "", email: "", password: "" });
+  const [form, setForm] = useState({ name: "", email: "", password: "", stationaryAccess: false });
   const [formError, setFormError] = useState("");
   const [search, setSearch] = useState("");
   const [resetPasswordId, setResetPasswordId] = useState<string | null>(null);
@@ -29,20 +29,23 @@ export default function TransferUsersPage() {
   const toggleStatus = trpc.transferUser.toggleStatus.useMutation({
     onSuccess: () => { utils.transferUser.list.invalidate(); },
   });
+  const toggleStationaryAccess = trpc.transferUser.toggleStationaryAccess.useMutation({
+    onSuccess: () => { utils.transferUser.list.invalidate(); },
+  });
   const resetPassword = trpc.transferUser.resetPassword.useMutation({
     onSuccess: (data) => { setNewPassword(data.password); setResetPasswordId(null); },
     onError: (e) => { alert(e.message); setResetPasswordId(null); },
   });
 
   const reset = () => {
-    setForm({ name: "", email: "", password: "" });
+    setForm({ name: "", email: "", password: "", stationaryAccess: false });
     setEditingId(null);
     setShowModal(false);
     setFormError("");
   };
 
-  const openEdit = (u: { id: string; name: string | null; email: string | null }) => {
-    setForm({ name: u.name || "", email: u.email || "", password: "" });
+  const openEdit = (u: { id: string; name: string | null; email: string | null; stationaryAccess: boolean }) => {
+    setForm({ name: u.name || "", email: u.email || "", password: "", stationaryAccess: u.stationaryAccess });
     setEditingId(u.id);
     setShowModal(true);
   };
@@ -56,6 +59,7 @@ export default function TransferUsersPage() {
         id: editingId,
         name: form.name,
         email: form.email,
+        stationaryAccess: form.stationaryAccess,
       });
     } else {
       if (!form.password || form.password.length < 6) { setFormError("Password must be at least 6 characters"); return; }
@@ -63,6 +67,7 @@ export default function TransferUsersPage() {
         name: form.name,
         email: form.email,
         password: form.password,
+        stationaryAccess: form.stationaryAccess,
       });
     }
   };
@@ -70,7 +75,7 @@ export default function TransferUsersPage() {
   const items = data?.items ?? [];
 
   return (
-    <div className="max-w-5xl mx-auto p-6 space-y-6">
+    <div className="max-w-6xl mx-auto p-6 space-y-6">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 rounded-lg bg-purple-50 flex items-center justify-center">
@@ -112,6 +117,7 @@ export default function TransferUsersPage() {
                 <th className="text-left py-3 px-4 text-xs font-semibold text-gray-500 uppercase">Name</th>
                 <th className="text-left py-3 px-4 text-xs font-semibold text-gray-500 uppercase">Email</th>
                 <th className="text-left py-3 px-4 text-xs font-semibold text-gray-500 uppercase">Status</th>
+                <th className="text-left py-3 px-4 text-xs font-semibold text-gray-500 uppercase">Stationary</th>
                 <th className="text-left py-3 px-4 text-xs font-semibold text-gray-500 uppercase">Last Login</th>
                 <th className="text-right py-3 px-4 text-xs font-semibold text-gray-500 uppercase">Actions</th>
               </tr>
@@ -120,7 +126,7 @@ export default function TransferUsersPage() {
               {isLoading ? (
                 Array.from({ length: 3 }).map((_, i) => (
                   <tr key={i} className="border-b border-gray-50">
-                    {Array.from({ length: 5 }).map((_, j) => (
+                    {Array.from({ length: 6 }).map((_, j) => (
                       <td key={j} className="py-3 px-4">
                         <div className="h-4 bg-gray-200 rounded animate-pulse w-3/4" />
                       </td>
@@ -129,7 +135,7 @@ export default function TransferUsersPage() {
                 ))
               ) : items.length === 0 ? (
                 <tr>
-                  <td colSpan={5} className="py-12 text-center">
+                  <td colSpan={6} className="py-12 text-center">
                     <div className="flex flex-col items-center gap-2">
                       <Users className="w-10 h-10 text-gray-300" />
                       <p className="text-gray-500 text-sm">{search ? "No users match your search" : "No transfer users yet. Add one to get started."}</p>
@@ -147,6 +153,20 @@ export default function TransferUsersPage() {
                       }`}>
                         {u.isActive ? "Active" : "Inactive"}
                       </span>
+                    </td>
+                    <td className="py-3 px-4">
+                      <button
+                        onClick={() => toggleStationaryAccess.mutate({ id: u.id })}
+                        disabled={toggleStationaryAccess.isPending}
+                        className="flex items-center gap-1.5 transition-colors"
+                        title={u.stationaryAccess ? "Revoke Stationary Access" : "Grant Stationary Access"}
+                      >
+                        {u.stationaryAccess ? (
+                          <><ToggleRight className="w-5 h-5 text-green-500" /><span className="text-xs text-green-700 font-medium">Yes</span></>
+                        ) : (
+                          <><ToggleLeft className="w-5 h-5 text-gray-400" /><span className="text-xs text-gray-500 font-medium">No</span></>
+                        )}
+                      </button>
                     </td>
                     <td className="py-3 px-4 text-sm text-gray-500">
                       {u.lastLoginAt ? new Date(u.lastLoginAt).toLocaleDateString() : "Never"}
@@ -246,6 +266,19 @@ export default function TransferUsersPage() {
                   />
                 </div>
               )}
+              <div className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg border border-gray-200">
+                <input
+                  type="checkbox"
+                  id="stationaryAccess"
+                  checked={form.stationaryAccess}
+                  onChange={(e) => setForm({ ...form, stationaryAccess: e.target.checked })}
+                  className="w-4 h-4 text-purple-600 rounded border-gray-300"
+                />
+                <label htmlFor="stationaryAccess" className="flex items-center gap-2 text-sm text-gray-700">
+                  <Package className="w-4 h-4 text-purple-500" />
+                  Stationary Portal Access
+                </label>
+              </div>
               <div className="flex justify-end gap-3 pt-2">
                 <button
                   type="button"

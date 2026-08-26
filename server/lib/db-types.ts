@@ -43,6 +43,7 @@ export type Profile = {
   mobile: string | null;
   address: string | null;
   isActive: boolean | null;
+  stationaryAccess: boolean | null;
   createdAt: string | null;
   updatedAt: string | null;
   lastLoginAt: string | null;
@@ -315,6 +316,7 @@ export type UnifiedUser =
       name: string | null;
       email: string | null;
       role: "transfer";
+      stationaryAccess: boolean;
     };
 
 export function mapProfileToUnifiedUser(p: Profile): UnifiedUser {
@@ -347,6 +349,7 @@ export function mapProfileToUnifiedUser(p: Profile): UnifiedUser {
       name: p.name,
       email: p.email,
       role: "transfer",
+      stationaryAccess: !!(p as any).stationaryAccess,
     };
   }
   return {

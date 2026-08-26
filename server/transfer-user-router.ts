@@ -43,6 +43,7 @@ export const transferUserRouter = createRouter({
         name: u.name,
         email: u.email,
         isActive: u.isActive,
+        stationaryAccess: !!u.stationaryAccess,
         createdAt: u.createdAt,
         lastLoginAt: u.lastLoginAt,
       }));
@@ -60,7 +61,7 @@ export const transferUserRouter = createRouter({
     const supabase = getSupabaseAdmin();
     const { data, error } = await supabase
       .from("profiles")
-      .select("id, name, email, isActive")
+      .select("id, name, email, isActive, stationaryAccess")
       .eq("role", "transfer")
       .eq("isActive", true)
       .order("name", { ascending: true });
@@ -84,6 +85,7 @@ export const transferUserRouter = createRouter({
         name: data.name,
         email: data.email,
         isActive: data.isActive,
+        stationaryAccess: !!data.stationaryAccess,
         createdAt: data.createdAt,
         lastLoginAt: data.lastLoginAt,
       };
@@ -96,6 +98,7 @@ export const transferUserRouter = createRouter({
         email: z.string().email(),
         password: z.string().min(6),
         isActive: z.boolean().default(true),
+        stationaryAccess: z.boolean().default(false),
       })
     )
     .mutation(async ({ ctx, input }) => {
@@ -122,6 +125,7 @@ export const transferUserRouter = createRouter({
             name: input.name,
             role: "transfer",
             isActive: input.isActive,
+            stationaryAccess: input.stationaryAccess,
             createdBy: ctx.user.id,
             updatedAt: new Date().toISOString(),
           },
@@ -139,7 +143,7 @@ export const transferUserRouter = createRouter({
         action: "create_transfer_user",
         entityType: "transferUser",
         entityId: data.id,
-        details: { name: input.name, email: input.email },
+        details: { name: input.name, email: input.email, stationaryAccess: input.stationaryAccess },
       });
 
       return {
@@ -147,6 +151,7 @@ export const transferUserRouter = createRouter({
         name: input.name,
         email: input.email,
         isActive: input.isActive,
+        stationaryAccess: input.stationaryAccess,
       };
     }),
 
@@ -157,6 +162,7 @@ export const transferUserRouter = createRouter({
         name: z.string().min(1).max(255).optional(),
         email: z.string().email().optional(),
         isActive: z.boolean().optional(),
+        stationaryAccess: z.boolean().optional(),
       })
     )
     .mutation(async ({ ctx, input }) => {
@@ -184,6 +190,7 @@ export const transferUserRouter = createRouter({
       }
       if (updates.name !== undefined) set.name = updates.name;
       if (updates.isActive !== undefined) set.isActive = updates.isActive;
+      if (updates.stationaryAccess !== undefined) (set as any).stationaryAccess = updates.stationaryAccess;
 
       const { error } = await supabase.from("profiles").update(set).eq("id", id);
       if (error) throw new Error(error.message);
@@ -231,6 +238,38 @@ export const transferUserRouter = createRouter({
       });
 
       return { isActive: newStatus };
+    }),
+
+  toggleStationaryAccess: mainAdminQuery
+    .input(z.object({ id: z.string() }))
+    .mutation(async ({ ctx, input }) => {
+      const supabase = getSupabaseAdmin();
+      const { data: user } = await supabase
+        .from("profiles")
+        .select("*")
+        .eq("id", input.id)
+        .eq("role", "transfer")
+        .maybeSingle();
+      if (!user) throw new Error("Transfer user not found");
+
+      const newValue = !user.stationaryAccess;
+      const { error } = await supabase
+        .from("profiles")
+        .update({ stationaryAccess: newValue, updatedAt: new Date().toISOString() } as any)
+        .eq("id", input.id);
+      if (error) throw new Error(error.message);
+
+      await createAuditLog({
+        userId: ctx.user.id,
+        userType: "admin",
+        userName: ctx.user.name || "Admin",
+        action: newValue ? "grant_stationary_access" : "revoke_stationary_access",
+        entityType: "transferUser",
+        entityId: input.id,
+        details: { name: user.name, stationaryAccess: newValue },
+      });
+
+      return { stationaryAccess: newValue };
     }),
 
   resetPassword: mainAdminQuery

@@ -41,6 +41,7 @@ export type UnifiedUser =
       name: string | null;
       email: string | null;
       role: "transfer";
+      stationaryAccess: boolean;
     };
 
 export function useAuth() {
@@ -83,6 +84,7 @@ export function useAuth() {
       isBranch: user?.type === "branch",
       isCluster: user?.type === "cluster",
       isTransfer: user?.type === "transfer",
+      hasStationaryAccess: user?.type === "transfer" && !!(user as any).stationaryAccess,
       isLoading: isLoading || logoutMutation.isPending,
       logout,
     }),
