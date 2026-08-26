@@ -43,6 +43,18 @@ export const adminQuery = authedQuery.use(requireRole("admin"));
 export const clusterQuery = authedQuery.use(requireRole("cluster"));
 export const transferQuery = authedQuery.use(requireRole("transfer"));
 
+// Admin OR transfer user with stationary portal access.
+const requireStationaryAccess = t.middleware(async (opts) => {
+  const { ctx, next } = opts;
+  if (!ctx.user) throw new TRPCError({ code: "UNAUTHORIZED", message: ErrorMessages.unauthenticated });
+  if (ctx.user.role === "admin") return next({ ctx: { ...ctx, user: ctx.user } });
+  if (ctx.user.role === "transfer" && (ctx.user as any).stationaryAccess) {
+    return next({ ctx: { ...ctx, user: ctx.user } });
+  }
+  throw new TRPCError({ code: "FORBIDDEN", message: ErrorMessages.insufficientRole });
+});
+export const stationaryAdminQuery = authedQuery.use(requireStationaryAccess);
+
 // Main admins (role "admin", no adminRole bucket) only.
 // Sub-admins are still type "admin" but are scoped to their bucket.
 const requireMainAdmin = t.middleware(async (opts) => {

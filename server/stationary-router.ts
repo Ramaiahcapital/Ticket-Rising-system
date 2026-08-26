@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { createRouter, adminQuery, authedQuery } from "./middleware.js";
+import { createRouter, authedQuery, stationaryAdminQuery } from "./middleware.js";
 import { getSupabaseAdmin } from "./lib/supabase.js";
 import { createAuditLog, notifyAllAdmins, notifyBranchUsers, notifyClusterUsers, requireRoleExists } from "./lib/utils.js";
 import type { BranchRole } from "./lib/db-types.js";
@@ -135,7 +135,7 @@ async function resubmitForClusterApproval(
 
 export const stationaryRouter = createRouter({
   // ---------------- Admin: items ----------------
-  listItems: adminQuery
+  listItems: stationaryAdminQuery
     .input(z.object({ includeInactive: z.boolean().default(false) }).optional())
     .query(async ({ input }) => {
       const supabase = getSupabaseAdmin();
@@ -155,7 +155,7 @@ export const stationaryRouter = createRouter({
       }));
     }),
 
-  createItem: adminQuery
+  createItem: stationaryAdminQuery
     .input(
       z.object({
         name: z.string().min(1),
@@ -183,7 +183,7 @@ export const stationaryRouter = createRouter({
       return { id: data.id };
     }),
 
-  updateItem: adminQuery
+  updateItem: stationaryAdminQuery
     .input(
       z.object({
         id: z.string(),
@@ -211,7 +211,7 @@ export const stationaryRouter = createRouter({
       return { success: true };
     }),
 
-  deleteItem: adminQuery
+  deleteItem: stationaryAdminQuery
     .input(z.object({ id: z.string() }))
     .mutation(async ({ ctx, input }) => {
       const supabase = getSupabaseAdmin();
@@ -243,7 +243,7 @@ export const stationaryRouter = createRouter({
     }),
 
   // ---------------- Admin: portal settings ----------------
-  getPortalSettings: adminQuery.query(async () => {
+  getPortalSettings: stationaryAdminQuery.query(async () => {
     const supabase = getSupabaseAdmin();
     const data = await getPortalSettings(supabase);
     return {
@@ -254,7 +254,7 @@ export const stationaryRouter = createRouter({
     };
   }),
 
-  updatePortalSettings: adminQuery
+  updatePortalSettings: stationaryAdminQuery
     .input(
       z.object({
         enabled: z.boolean().optional(),
@@ -851,7 +851,7 @@ export const stationaryRouter = createRouter({
     }),
 
   // ---------------- Admin: reports ----------------
-  reports: adminQuery
+  reports: stationaryAdminQuery
     .input(
       z
         .object({
@@ -967,7 +967,7 @@ export const stationaryRouter = createRouter({
     }),
 
   // ---------------- Admin: all orders (for editing branch order qty) ----------------
-  listOrders: adminQuery
+  listOrders: stationaryAdminQuery
     .input(z.object({ branchId: z.string().optional(), status: z.enum(["all", "pending", "approved", "dispatched", "received", "fulfilled", "cancelled"]).default("all"), month: z.string().optional() }).optional())
     .query(async ({ input }) => {
       const supabase = getSupabaseAdmin();
@@ -1049,7 +1049,7 @@ export const stationaryRouter = createRouter({
       return { orders: mapped, branchTotals, grandTotal };
     }),
 
-  updateOrderItemQty: adminQuery
+  updateOrderItemQty: stationaryAdminQuery
     .input(z.object({ orderItemId: z.string(), quantity: z.number().int().min(0) }))
     .mutation(async ({ ctx, input }) => {
       const supabase = getSupabaseAdmin();
@@ -1106,7 +1106,7 @@ export const stationaryRouter = createRouter({
     }),
 
   /** Admin: delete a line item from a branch's stationary order. */
-  deleteOrderItem: adminQuery
+  deleteOrderItem: stationaryAdminQuery
     .input(z.object({ orderItemId: z.string() }))
     .mutation(async ({ ctx, input }) => {
       const supabase = getSupabaseAdmin();
@@ -1149,7 +1149,7 @@ export const stationaryRouter = createRouter({
       return { success: true };
     }),
 
-  setOrderStatus: adminQuery
+  setOrderStatus: stationaryAdminQuery
     .input(z.object({ orderId: z.string(), status: z.enum(["pending", "approved", "dispatched"]) }))
     .mutation(async ({ ctx, input }) => {
       const supabase = getSupabaseAdmin();
@@ -1178,7 +1178,7 @@ export const stationaryRouter = createRouter({
       return { success: true };
     }),
 
-  listBranches: adminQuery.query(async () => {
+  listBranches: stationaryAdminQuery.query(async () => {
     const supabase = getSupabaseAdmin();
     const { data, error } = await supabase
       .from("branches")
