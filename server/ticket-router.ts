@@ -1089,6 +1089,9 @@ async function enrichTicket(supabase: ReturnType<typeof getSupabaseAdmin>, ticke
   const { data: assignee } = ticket.assignedTo
     ? await supabase.from("profiles").select("*").eq("id", ticket.assignedTo).maybeSingle()
     : { data: null };
+  const { data: createdByProfile } = ticket.createdBy
+    ? await supabase.from("profiles").select("*").eq("id", ticket.createdBy).maybeSingle()
+    : { data: null };
   const { data: attachments } = await supabase
     .from("ticket_attachments")
     .select("*")
@@ -1103,6 +1106,7 @@ async function enrichTicket(supabase: ReturnType<typeof getSupabaseAdmin>, ticke
     subcategory: subcategory || null,
     branch: branch || null,
     assignee: assignee || null,
+    createdByProfile: createdByProfile || null,
     attachments: attachments ?? [],
   };
 }

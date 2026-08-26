@@ -400,10 +400,13 @@ export default function TicketDetail() {
                         </div>
                         <div>
                           <p className="text-sm font-medium text-gray-800">
-                            {ticket.branch?.contactPerson || "Branch User"}
+                            {(ticket as any).createdByProfile?.name || ticket.branch?.contactPerson || "Branch User"}
+                            {(ticket as any).createdByProfile?.role === "cluster" && (
+                              <span className="ml-1 text-[10px] px-1.5 py-0.5 rounded bg-blue-50 text-blue-600 font-medium">Cluster</span>
+                            )}
                           </p>
                           <p className="text-[10px] text-gray-400">
-                            {ticket.branch?.branchName || ""} · {new Date(ticket.createdAt ?? new Date()).toLocaleDateString()} {new Date(ticket.createdAt ?? new Date()).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                            {ticket.branch?.branchName || (ticket as any).createdByProfile?.branchName || (ticket as any).createdByProfile?.name || ""} · {new Date(ticket.createdAt ?? new Date()).toLocaleDateString()} {new Date(ticket.createdAt ?? new Date()).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
                           </p>
                         </div>
                       </div>
@@ -634,7 +637,7 @@ export default function TicketDetail() {
               <div className="flex items-center gap-2">
                 <Building2 className="w-4 h-4 text-gray-400" />
                 <span className="text-gray-500">Branch:</span>
-                <span className="ml-auto">{ticket.branch?.branchName || "-"}</span>
+                <span className="ml-auto">{ticket.branch?.branchName || (ticket as any).createdByProfile?.branchName || (ticket as any).createdByProfile?.name || "-"}</span>
               </div>
               {ticket.branchRole && (
                 <div className="flex items-center gap-2">
@@ -652,7 +655,12 @@ export default function TicketDetail() {
               <div className="flex items-center gap-2">
                 <User className="w-4 h-4 text-gray-400" />
                 <span className="text-gray-500">Created by:</span>
-                <span className="ml-auto">{ticket.branch?.contactPerson || "-"}</span>
+                <span className="ml-auto">
+                  {(ticket as any).createdByProfile?.name || ticket.branch?.contactPerson || "-"}
+                  {(ticket as any).createdByProfile?.role === "cluster" && (
+                    <span className="ml-1 text-[10px] px-1.5 py-0.5 rounded bg-blue-50 text-blue-600 font-medium">Cluster</span>
+                  )}
+                </span>
               </div>
 
               {ticket.assignee && (
