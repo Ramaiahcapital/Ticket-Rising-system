@@ -50,6 +50,7 @@ const clusterNavItems: NavItem[] = [
 
 const transferNavBase: NavItem[] = [
   { label: "My Tickets", icon: Ticket, path: "/tickets" },
+  { label: "Email Settings", icon: Mail, path: "/email-settings" },
 ];
 const transferStationaryItem: NavItem = { label: "Stationary", icon: Package, path: "/stationary/admin" };
 

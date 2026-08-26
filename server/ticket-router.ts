@@ -58,17 +58,7 @@ export const ticketRouter = createRouter({
       if (ctx.user.type === "branch") {
         query = query.eq("branchId", ctx.user.id);
       } else if (ctx.user.type === "cluster") {
-        const clusterId = (ctx.user as any).clusterId;
-        const ids = [ctx.user.id];
-        if (clusterId) {
-          const { data: branchUsers } = await supabase
-            .from("profiles")
-            .select("id")
-            .eq("clusterId", clusterId)
-            .eq("role", "branch");
-          for (const b of branchUsers ?? []) ids.push(b.id);
-        }
-        query = query.in("branchId", ids);
+        query = query.eq("branchId", ctx.user.id);
       } else if (ctx.user.type === "transfer") {
         const db = supabase as any;
         const { data: transfers } = await db
@@ -196,17 +186,7 @@ export const ticketRouter = createRouter({
       if (ctx.user.type === "branch") {
         query = query.eq("branchId", ctx.user.id);
       } else if (ctx.user.type === "cluster") {
-        const clusterId = (ctx.user as any).clusterId;
-        const ids = [ctx.user.id];
-        if (clusterId) {
-          const { data: branchUsers } = await supabase
-            .from("profiles")
-            .select("id")
-            .eq("clusterId", clusterId)
-            .eq("role", "branch");
-          for (const b of branchUsers ?? []) ids.push(b.id);
-        }
-        query = query.in("branchId", ids);
+        query = query.eq("branchId", ctx.user.id);
       } else if (ctx.user.type === "transfer") {
         const db = supabase as any;
         const { data: transfers } = await db
