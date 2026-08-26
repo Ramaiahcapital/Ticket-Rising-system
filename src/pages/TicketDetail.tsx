@@ -15,7 +15,7 @@ import {
 export default function TicketDetail() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const { isAdmin, isTransfer } = useAuth();
+  const { isAdmin } = useAuth();
   const { getColor } = useBranchRoles();
   const ticketId = id ?? "";
 
@@ -313,7 +313,7 @@ export default function TicketDetail() {
               </button>
             )}
 
-            {!isTransfer && (
+            {isAdmin && (
             <button
               onClick={() => setTransferOpen(true)}
               className="flex items-center gap-2 px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white text-sm font-medium rounded-lg transition-colors"

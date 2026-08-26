@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { createRouter, mainAdminQuery } from "./middleware.js";
+import { createRouter, mainAdminQuery, adminQuery } from "./middleware.js";
 import { getSupabaseAdmin } from "./lib/supabase.js";
 import type { Profile } from "./lib/db-types.js";
 import { createAuditLog } from "./lib/utils.js";
@@ -56,7 +56,7 @@ export const transferUserRouter = createRouter({
       };
     }),
 
-  all: mainAdminQuery.query(async () => {
+  all: adminQuery.query(async () => {
     const supabase = getSupabaseAdmin();
     const { data, error } = await supabase
       .from("profiles")
