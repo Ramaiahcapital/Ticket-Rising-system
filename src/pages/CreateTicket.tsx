@@ -4,7 +4,7 @@ import { trpc } from "@/providers/trpc";
 import { useAuth } from "@/hooks/useAuth";
 import { useBranchRoles } from "@/hooks/useBranchRoles";
 import { supabase } from "@/lib/supabase";
-import { ArrowLeft, Send, Loader2, ImageIcon, XCircle, Users } from "lucide-react";
+import { ArrowLeft, Send, Loader2, ImageIcon, FileIcon, XCircle, Users } from "lucide-react";
 
 type FieldDef = {
   id: string;
@@ -386,22 +386,24 @@ export default function CreateTicket() {
             {filesEnabled && (
               <div className="pt-1">
                 <label className="block text-sm font-medium text-gray-700 mb-1.5">
-                  Attachments <span className="text-xs text-gray-400 font-normal">(up to 5 images, max 2MB each)</span>
+                  Attachments <span className="text-xs text-gray-400 font-normal">(up to 5 files — images, PDF, Excel, CSV; max 2MB each)</span>
                 </label>
                 <div className="border-2 border-dashed border-gray-300 rounded-lg p-4">
                   <input
                     type="file"
                     multiple
-                    accept="image/*"
+                    accept="image/*,.pdf,.xls,.xlsx,.csv"
                     onChange={(e) => {
                       const selected = Array.from(e.target.files ?? []);
+                      const allowed = /^(image\/|application\/pdf$|text\/csv$|application\/vnd\.ms-excel$|application\/vnd\.openxmlformats-officedocument\.spreadsheetml\.sheet$)/
+                        .test(selected[0]?.type ?? "");
+                      if (!allowed) { setErrors(prev => ({ ...prev, files: "Only images, PDF, Excel, or CSV files are allowed" })); return false; }
                       const valid = selected.filter(f => {
-                        if (!f.type.startsWith("image/")) { setErrors(prev => ({ ...prev, files: "Only image files are allowed" })); return false; }
                         if (f.size > 2 * 1024 * 1024) { setErrors(prev => ({ ...prev, files: `${f.name} exceeds 2MB limit` })); return false; }
                         return true;
                       });
                       if (valid.length > 5) {
-                        setErrors(prev => ({ ...prev, files: "Maximum 5 images allowed per ticket" }));
+                        setErrors(prev => ({ ...prev, files: "Maximum 5 files allowed per ticket" }));
                         setFiles(valid.slice(0, 5));
                       } else {
                         setFiles(valid);
@@ -413,14 +415,21 @@ export default function CreateTicket() {
                   />
                   <label htmlFor="ticket-files" className="flex flex-col items-center gap-1 cursor-pointer text-gray-500 hover:text-red-600">
                     <ImageIcon className="w-5 h-5" />
-                    <span className="text-xs">Click to select up to 5 images (compressed to ≤1MB)</span>
+                    <span className="text-xs">Click to select up to 5 files (images, PDF, Excel, CSV)</span>
                   </label>
                   {errors.files && <p className="text-xs text-red-600 mt-1 text-center">{errors.files}</p>}
                   {files.length > 0 && (
                     <div className="mt-3 grid grid-cols-2 sm:grid-cols-3 gap-2">
                       {files.map((file, i) => (
                         <div key={i} className="relative group bg-gray-50 rounded-lg border border-gray-200 overflow-hidden">
-                          <img src={URL.createObjectURL(file)} alt={file.name} className="w-full h-20 object-cover" />
+                          {file.type.startsWith("image/") ? (
+                            <img src={URL.createObjectURL(file)} alt={file.name} className="w-full h-20 object-cover" />
+                          ) : (
+                            <div className="w-full h-20 flex flex-col items-center justify-center bg-gray-100">
+                              <FileIcon className="w-6 h-6 text-gray-500" />
+                              <span className="text-[9px] text-gray-500 mt-1">{file.name.split(".").pop()?.toUpperCase()}</span>
+                            </div>
+                          )}
                           <div className="p-1.5">
                             <p className="text-[10px] text-gray-600 truncate">{file.name}</p>
                             <p className="text-[9px] text-gray-400">{(file.size / 1024).toFixed(0)}KB</p>

@@ -511,7 +511,14 @@ export default function TicketDetail() {
                           <div className="mt-2 grid grid-cols-2 sm:grid-cols-3 gap-2">
                             {commentFiles.map((file, i) => (
                               <div key={i} className="relative group bg-gray-50 rounded-lg border border-gray-200 overflow-hidden">
-                                <img src={URL.createObjectURL(file)} alt={file.name} className="w-full h-16 object-cover" />
+                                {file.type.startsWith("image/") ? (
+                                  <img src={URL.createObjectURL(file)} alt={file.name} className="w-full h-16 object-cover" />
+                                ) : (
+                                  <div className="w-full h-16 flex flex-col items-center justify-center bg-gray-100">
+                                    <FileText className="w-4 h-4 text-gray-500" />
+                                    <span className="text-[9px] text-gray-500 mt-0.5">{file.name.split(".").pop()?.toUpperCase()}</span>
+                                  </div>
+                                )}
                                 <div className="p-1">
                                   <p className="text-[9px] text-gray-500 truncate">{file.name}</p>
                                 </div>
@@ -533,17 +540,19 @@ export default function TicketDetail() {
                                 <input
                                   type="file"
                                   multiple
-                                  accept="image/*"
+                                  accept="image/*,.pdf,.xls,.xlsx,.csv"
                                   onChange={(e) => {
                                     const selected = Array.from(e.target.files ?? []);
                                     const valid = selected.filter(f => {
-                                      if (!f.type.startsWith("image/")) return false;
+                                      const allowed = /^(image\/|application\/pdf$|text\/csv$|application\/vnd\.ms-excel$|application\/vnd\.openxmlformats-officedocument\.spreadsheetml\.sheet$)/
+                                        .test(f.type);
+                                      if (!allowed) return false;
                                       if (f.size > 2 * 1024 * 1024) return false;
                                       return true;
                                     });
                                     setCommentFiles(prev => {
                                       const combined = [...prev, ...valid];
-                                      if (combined.length > 5) alert("Maximum 5 images per comment");
+                                      if (combined.length > 5) alert("Maximum 5 files per comment");
                                       return combined.slice(0, 5);
                                     });
                                   }}
