@@ -906,6 +906,8 @@ export const ticketRouter = createRouter({
         <p style="margin-top:16px;color:#666;">Ramaiah Capital Ticket Management System</p>
       </div>`;
 
+      let emailSent = false;
+      let emailError: string | null = null;
       try {
         await sendEmailFromUser(
           ctx.user.id,
@@ -913,7 +915,9 @@ export const ticketRouter = createRouter({
           `Update on Ticket: ${ticket.ticketNumber} - ${ticket.subject}`,
           htmlBody
         );
+        emailSent = true;
       } catch (e) {
+        emailError = e instanceof Error ? e.message : String(e);
         console.error("Notify branch email failed:", e);
       }
 
@@ -926,7 +930,7 @@ export const ticketRouter = createRouter({
         ticketId: input.ticketId,
       });
 
-      return { success: true };
+      return { success: true, emailSent, emailError };
     }),
 
   /** Transfer a ticket to another user by email. */

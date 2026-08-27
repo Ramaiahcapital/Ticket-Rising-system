@@ -112,8 +112,16 @@ export default function TicketDetail() {
   });
 
   const notifyBranch = trpc.ticket.notifyBranch.useMutation({
-    onSuccess: () => {
-      alert("Branch user has been notified via email.");
+    onSuccess: (data) => {
+      if (data.emailSent) {
+        alert("Branch user has been notified via email.");
+      } else {
+        alert(
+          `Notification created but email was not sent.${
+            data.emailError ? ` Error: ${data.emailError}` : ""
+          }\nConnect your Gmail in Email Settings to enable email notifications.`
+        );
+      }
     },
     onError: (err) => {
       alert(err.message || "Failed to send notification.");
