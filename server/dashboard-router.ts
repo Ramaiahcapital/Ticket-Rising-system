@@ -158,6 +158,82 @@ export const dashboardRouter = createRouter({
     };
   }),
 
+  monitorStats: authedQuery.query(async ({ ctx }) => {
+    const supabase = getSupabaseAdmin();
+
+    // View-only middle admins (transfer users with monitor access).
+    if (ctx.user.type !== "transfer" || !(ctx.user as any).monitorRole) {
+      throw new Error("Monitor access not assigned");
+    }
+    const monitorRole = (ctx.user as any).monitorRole as string;
+
+    const { count: totalTickets } = await supabase
+      .from("tickets")
+      .select("*", { count: "exact", head: true })
+      .eq("branchRole", monitorRole);
+
+    const { data: allTickets } = await supabase
+      .from("tickets")
+      .select("*")
+      .eq("branchRole", monitorRole);
+
+    const { data: statuses } = await supabase
+      .from("ticket_statuses")
+      .select("*")
+      .order("sortOrder", { ascending: true });
+
+    const statusCountMap = new Map<string, number>();
+    for (const t of allTickets ?? []) {
+      if (t.statusId) {
+        statusCountMap.set(t.statusId, (statusCountMap.get(t.statusId) || 0) + 1);
+      }
+    }
+
+    const { data: priorities } = await supabase
+      .from("ticket_priorities")
+      .select("*")
+      .order("sortOrder", { ascending: true });
+
+    const priorityCountMap = new Map<string, number>();
+    for (const t of allTickets ?? []) {
+      if (t.priorityId) {
+        priorityCountMap.set(t.priorityId, (priorityCountMap.get(t.priorityId) || 0) + 1);
+      }
+    }
+
+    const { count: totalBranches } = await supabase
+      .from("profiles")
+      .select("*", { count: "exact", head: true })
+      .eq("role", "branch")
+      .eq("branchRole", monitorRole);
+
+    const { data: recentTickets } = await supabase
+      .from("tickets")
+      .select("*")
+      .eq("branchRole", monitorRole)
+      .order("createdAt", { ascending: false })
+      .limit(10);
+
+    return {
+      departmentName: monitorRole,
+      totalTickets: Number(totalTickets || 0),
+      totalBranches: Number(totalBranches || 0),
+      statusDistribution: ((statuses as TicketStatusRow[] | null) ?? []).map((s) => ({
+        id: s.id,
+        name: s.name,
+        color: s.color,
+        count: Number(statusCountMap.get(s.id) || 0),
+      })),
+      priorityDistribution: ((priorities as TicketPriorityRow[] | null) ?? []).map((p) => ({
+        id: p.id,
+        name: p.name,
+        color: p.color,
+        count: Number(priorityCountMap.get(p.id) || 0),
+      })),
+      recentTickets: (recentTickets as TicketRow[] | null) ?? [],
+    };
+  }),
+
   branchStats: authedQuery.query(async ({ ctx }) => {
     const supabase = getSupabaseAdmin();
 

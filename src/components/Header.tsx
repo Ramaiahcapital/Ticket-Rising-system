@@ -51,7 +51,7 @@ export default function Header({ onMenuClick, onDesktopToggle, sidebarCollapsed 
           <Menu className="w-5 h-5 text-gray-600" />
         </button>
         <h1 className="text-lg font-semibold text-gray-800 hidden sm:block">
-          {user?.type === "admin" ? "Admin Portal" : user?.type === "cluster" ? (user as any)?.clusterName || "Cluster Portal" : user?.type === "transfer" ? "Transfer Portal" : user?.branchName || "Branch Portal"}
+          {user?.type === "admin" ? "Admin Portal" : user?.type === "cluster" ? (user as any)?.clusterName || "Cluster Portal" : user?.type === "transfer" ? ((user as any)?.monitorRole ? "Monitor Portal" : "Transfer Portal") : user?.branchName || "Branch Portal"}
         </h1>
       </div>
 

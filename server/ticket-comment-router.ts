@@ -47,6 +47,11 @@ export const ticketCommentRouter = createRouter({
       else if (ctx.user.type === "cluster") hasAccess = true;
       if (!hasAccess) {
         const email = await getUserEmail(ctx.user);
+        // Middle admin: view-only access to their monitored department's tickets.
+        if (ctx.user.type === "transfer") {
+          const monitorRole = (ctx.user as any).monitorRole ?? null;
+          if (monitorRole && ticket.branchRole === monitorRole) hasAccess = true;
+        }
         if (await hasTransferAccess(ctx.user.id, email, input.ticketId)) hasAccess = true;
       }
       if (!hasAccess) throw new Error("Access denied");

@@ -44,6 +44,8 @@ export type Profile = {
   address: string | null;
   isActive: boolean | null;
   stationaryAccess: boolean | null;
+  /** Department the transfer user can MONITOR (view-only) as a middle admin. NULL = none. */
+  monitorRole: BranchRole | null;
   createdAt: string | null;
   updatedAt: string | null;
   lastLoginAt: string | null;
@@ -317,6 +319,8 @@ export type UnifiedUser =
       email: string | null;
       role: "transfer";
       stationaryAccess: boolean;
+      /** Department to monitor (view-only) as a middle admin. NULL = none. */
+      monitorRole: BranchRole | null;
     };
 
 export function mapProfileToUnifiedUser(p: Profile): UnifiedUser {
@@ -350,6 +354,7 @@ export function mapProfileToUnifiedUser(p: Profile): UnifiedUser {
       email: p.email,
       role: "transfer",
       stationaryAccess: !!(p as any).stationaryAccess,
+      monitorRole: (p as any).monitorRole ?? null,
     };
   }
   return {

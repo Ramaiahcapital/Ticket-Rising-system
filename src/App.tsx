@@ -27,6 +27,7 @@ import EmailConnectPage from "@/pages/EmailConnectPage";
 import AdminUsersPage from "@/pages/AdminUsersPage";
 import TransferUsersPage from "@/pages/TransferUsersPage";
 import TransferAccept from "@/pages/TransferAccept";
+import MonitorDashboard from "@/pages/MonitorDashboard";
 import NotFound from "@/pages/NotFound";
 
 function ProtectedRoute({
@@ -228,6 +229,14 @@ export default function App() {
         }
       />
       <Route
+        path="/monitor"
+        element={
+          <ProtectedRoute>
+            <MonitorDashboard />
+          </ProtectedRoute>
+        }
+      />
+      <Route
         path="/:token"
         element={<TransferAccept />}
       />
@@ -262,6 +271,9 @@ function RoleBasedDashboard() {
     return <AdminDashboard />;
   }
   if (user?.type === "cluster") return <ClusterDashboard />;
-  if (user?.type === "transfer") return <TicketList />;
+  if (user?.type === "transfer") {
+    if ((user as any).monitorRole) return <MonitorDashboard />;
+    return <TicketList />;
+  }
   return <BranchDashboard />;
 }

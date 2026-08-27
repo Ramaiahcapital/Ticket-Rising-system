@@ -67,8 +67,21 @@ export const ticketRouter = createRouter({
           .eq("to_email", ctx.user.email?.toLowerCase().trim() || "")
           .eq("status", "accepted");
         const ticketIds = (transfers ?? []).map((t: any) => t.ticket_id);
-        if (ticketIds.length === 0) return { items: [], total: 0, page: params.page, limit: params.limit, totalPages: 0 };
-        query = query.in("id", ticketIds);
+
+        // Transfer user promoted to middle admin also views their monitored department's tickets.
+        const monitorRole = (ctx.user as any).monitorRole ?? null;
+
+        if (monitorRole && ticketIds.length === 0) {
+          query = query.eq("branchRole", monitorRole);
+          // Note: these are view-only (middle admin) — enforced by changeStatus/reply guards.
+        } else if (!monitorRole && ticketIds.length === 0) {
+          return { items: [], total: 0, page: params.page, limit: params.limit, totalPages: 0 };
+        } else if (monitorRole) {
+          // Transferred tickets + monitored department tickets.
+          query = query.or(`id.in.(${ticketIds.join(",")}),branchRole.eq.${monitorRole}`);
+        } else {
+          query = query.in("id", ticketIds);
+        }
       } else if (params.branchId) {
         query = query.eq("branchId", params.branchId);
       }
@@ -248,6 +261,9 @@ export const ticketRouter = createRouter({
       else if (ctx.user.type === "cluster") hasAccess = true;
       else if (ctx.user.type === "transfer") {
         const email = await getUserEmail(ctx.user);
+        // View-only access as a middle admin (monitors their assigned department).
+        const monitorRole = (ctx.user as any).monitorRole ?? null;
+        if (monitorRole && ticket.branchRole === monitorRole) hasAccess = true;
         if (await hasTransferAccess(ctx.user.id, email, input.id)) hasAccess = true;
       }
       if (!hasAccess) {
@@ -255,7 +271,21 @@ export const ticketRouter = createRouter({
         if (await hasTransferAccess(ctx.user.id, email, input.id)) hasAccess = true;
       }
       if (!hasAccess) throw new Error("Access denied");
-      return await enrichTicket(supabase, ticket);
+
+      // Whether the current user can ACT on this ticket (reply/notify/change status).
+      // Monitors (middle admins) can VIEW department tickets but can only act on tickets
+      // actually transferred to them, never on monitored-only tickets.
+      let canAct = false;
+      if (ctx.user.type === "branch" && ticket.branchId === ctx.user.id) canAct = true;
+      else if (ctx.user.type === "admin" && canAdminAccessTicket(ctx.user, ticket.branchRole)) canAct = true;
+      else if (ctx.user.type === "cluster") canAct = true;
+      else if (ctx.user.type === "transfer") {
+        const email = await getUserEmail(ctx.user);
+        if (await hasTransferAccess(ctx.user.id, email, input.id)) canAct = true;
+      }
+
+      const enriched = await enrichTicket(supabase, ticket);
+      return { ...enriched, canAct };
     }),
 
   byNumber: authedQuery

@@ -44,6 +44,7 @@ export const transferUserRouter = createRouter({
         email: u.email,
         isActive: u.isActive,
         stationaryAccess: !!u.stationaryAccess,
+        monitorRole: (u as any).monitorRole ?? null,
         createdAt: u.createdAt,
         lastLoginAt: u.lastLoginAt,
       }));
@@ -61,7 +62,7 @@ export const transferUserRouter = createRouter({
     const supabase = getSupabaseAdmin();
     const { data, error } = await supabase
       .from("profiles")
-      .select("id, name, email, isActive, stationaryAccess")
+      .select("id, name, email, isActive, stationaryAccess, monitorRole")
       .eq("role", "transfer")
       .eq("isActive", true)
       .order("name", { ascending: true });
@@ -86,6 +87,7 @@ export const transferUserRouter = createRouter({
         email: data.email,
         isActive: data.isActive,
         stationaryAccess: !!data.stationaryAccess,
+        monitorRole: (data as any).monitorRole ?? null,
         createdAt: data.createdAt,
         lastLoginAt: data.lastLoginAt,
       };
@@ -99,6 +101,7 @@ export const transferUserRouter = createRouter({
         password: z.string().min(6),
         isActive: z.boolean().default(true),
         stationaryAccess: z.boolean().default(false),
+        monitorRole: z.string().max(100).nullable().optional(),
       })
     )
     .mutation(async ({ ctx, input }) => {
@@ -126,6 +129,7 @@ export const transferUserRouter = createRouter({
             role: "transfer",
             isActive: input.isActive,
             stationaryAccess: input.stationaryAccess,
+            monitorRole: input.monitorRole ?? null,
             createdBy: ctx.user.id,
             updatedAt: new Date().toISOString(),
           },
@@ -143,7 +147,7 @@ export const transferUserRouter = createRouter({
         action: "create_transfer_user",
         entityType: "transferUser",
         entityId: data.id,
-        details: { name: input.name, email: input.email, stationaryAccess: input.stationaryAccess },
+        details: { name: input.name, email: input.email, stationaryAccess: input.stationaryAccess, monitorRole: input.monitorRole ?? null },
       });
 
       return {
@@ -152,6 +156,7 @@ export const transferUserRouter = createRouter({
         email: input.email,
         isActive: input.isActive,
         stationaryAccess: input.stationaryAccess,
+        monitorRole: input.monitorRole ?? null,
       };
     }),
 
@@ -163,6 +168,7 @@ export const transferUserRouter = createRouter({
         email: z.string().email().optional(),
         isActive: z.boolean().optional(),
         stationaryAccess: z.boolean().optional(),
+        monitorRole: z.string().max(100).nullable().optional(),
       })
     )
     .mutation(async ({ ctx, input }) => {
@@ -191,6 +197,7 @@ export const transferUserRouter = createRouter({
       if (updates.name !== undefined) set.name = updates.name;
       if (updates.isActive !== undefined) set.isActive = updates.isActive;
       if (updates.stationaryAccess !== undefined) (set as any).stationaryAccess = updates.stationaryAccess;
+      if (updates.monitorRole !== undefined) (set as any).monitorRole = updates.monitorRole ?? null;
 
       const { error } = await supabase.from("profiles").update(set).eq("id", id);
       if (error) throw new Error(error.message);
@@ -206,6 +213,53 @@ export const transferUserRouter = createRouter({
       });
 
       return { success: true };
+    }),
+
+  /** Assign (or clear) a department for a transfer user to MONITOR as a view-only middle admin. */
+  assignMonitor: mainAdminQuery
+    .input(
+      z.object({
+        id: z.string(),
+        monitorRole: z.string().max(100).nullable(),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      const supabase = getSupabaseAdmin();
+      const { data: user } = await supabase
+        .from("profiles")
+        .select("*")
+        .eq("id", input.id)
+        .eq("role", "transfer")
+        .maybeSingle();
+      if (!user) throw new Error("Transfer user not found");
+
+      if (input.monitorRole) {
+        const { data: role } = await supabase
+          .from("branch_roles")
+          .select("id")
+          .eq("name", input.monitorRole)
+          .eq("isActive", true)
+          .maybeSingle();
+        if (!role) throw new Error(`Branch role "${input.monitorRole}" does not exist or is inactive`);
+      }
+
+      const { error } = await supabase
+        .from("profiles")
+        .update({ monitorRole: input.monitorRole ?? null, updatedAt: new Date().toISOString() } as any)
+        .eq("id", input.id);
+      if (error) throw new Error(error.message);
+
+      await createAuditLog({
+        userId: ctx.user.id,
+        userType: "admin",
+        userName: ctx.user.name || "Admin",
+        action: input.monitorRole ? "assign_monitor" : "remove_monitor",
+        entityType: "transferUser",
+        entityId: input.id,
+        details: { name: user.name, monitorRole: input.monitorRole ?? null },
+      });
+
+      return { monitorRole: input.monitorRole ?? null };
     }),
 
   toggleStatus: mainAdminQuery

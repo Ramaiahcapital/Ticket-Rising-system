@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { trpc } from "@/providers/trpc";
-import { Plus, Pencil, Trash2, X, Loader2, Users, Search, KeyRound, ToggleLeft, ToggleRight, Package } from "lucide-react";
+import { Plus, Pencil, Trash2, X, Loader2, Users, Search, KeyRound, ToggleLeft, ToggleRight, Package, Eye } from "lucide-react";
+import { useBranchRoles } from "@/hooks/useBranchRoles";
 
 export default function TransferUsersPage() {
   const [showModal, setShowModal] = useState(false);
@@ -13,6 +14,9 @@ export default function TransferUsersPage() {
 
   const utils = trpc.useUtils();
   const { data, isLoading } = trpc.transferUser.list.useQuery({ search: search || undefined });
+  const { data: roles } = trpc.branchRole.list.useQuery();
+  const activeRoles = (roles ?? []).filter((r) => r.isActive);
+  const { getColor } = useBranchRoles();
 
   const createUser = trpc.transferUser.create.useMutation({
     onSuccess: () => { reset(); utils.transferUser.list.invalidate(); },
@@ -31,6 +35,10 @@ export default function TransferUsersPage() {
   });
   const toggleStationaryAccess = trpc.transferUser.toggleStationaryAccess.useMutation({
     onSuccess: () => { utils.transferUser.list.invalidate(); },
+  });
+  const assignMonitor = trpc.transferUser.assignMonitor.useMutation({
+    onSuccess: () => { utils.transferUser.list.invalidate(); },
+    onError: (e) => { alert(e.message); },
   });
   const resetPassword = trpc.transferUser.resetPassword.useMutation({
     onSuccess: (data) => { setNewPassword(data.password); setResetPasswordId(null); },
@@ -117,6 +125,7 @@ export default function TransferUsersPage() {
                 <th className="text-left py-3 px-4 text-xs font-semibold text-gray-500 uppercase">Name</th>
                 <th className="text-left py-3 px-4 text-xs font-semibold text-gray-500 uppercase">Email</th>
                 <th className="text-left py-3 px-4 text-xs font-semibold text-gray-500 uppercase">Status</th>
+                <th className="text-left py-3 px-4 text-xs font-semibold text-gray-500 uppercase">Monitor (dept)</th>
                 <th className="text-left py-3 px-4 text-xs font-semibold text-gray-500 uppercase">Stationary</th>
                 <th className="text-left py-3 px-4 text-xs font-semibold text-gray-500 uppercase">Last Login</th>
                 <th className="text-right py-3 px-4 text-xs font-semibold text-gray-500 uppercase">Actions</th>
@@ -126,7 +135,7 @@ export default function TransferUsersPage() {
               {isLoading ? (
                 Array.from({ length: 3 }).map((_, i) => (
                   <tr key={i} className="border-b border-gray-50">
-                    {Array.from({ length: 6 }).map((_, j) => (
+                    {Array.from({ length: 7 }).map((_, j) => (
                       <td key={j} className="py-3 px-4">
                         <div className="h-4 bg-gray-200 rounded animate-pulse w-3/4" />
                       </td>
@@ -135,7 +144,7 @@ export default function TransferUsersPage() {
                 ))
               ) : items.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="py-12 text-center">
+                  <td colSpan={7} className="py-12 text-center">
                     <div className="flex flex-col items-center gap-2">
                       <Users className="w-10 h-10 text-gray-300" />
                       <p className="text-gray-500 text-sm">{search ? "No users match your search" : "No transfer users yet. Add one to get started."}</p>
@@ -153,6 +162,31 @@ export default function TransferUsersPage() {
                       }`}>
                         {u.isActive ? "Active" : "Inactive"}
                       </span>
+                    </td>
+                    <td className="py-3 px-4">
+                      <div className="flex items-center gap-1.5">
+                        <Eye className="w-4 h-4 text-gray-400" />
+                        <select
+                          value={u.monitorRole ?? ""}
+                          disabled={assignMonitor.isPending}
+                          onChange={(e) => assignMonitor.mutate({ id: u.id, monitorRole: e.target.value || null })}
+                          title="Assign a department the user can MONITOR (view-only middle admin)"
+                          className="text-xs border border-gray-200 rounded-md px-2 py-1 bg-white focus:outline-none focus:ring-2 focus:ring-purple-500/20"
+                        >
+                          <option value="">No monitor</option>
+                          {activeRoles.map((r) => (
+                            <option key={r.id} value={r.name}>{r.name}</option>
+                          ))}
+                        </select>
+                        {u.monitorRole && (
+                          <span
+                            className="px-1.5 py-0.5 rounded text-[10px] font-semibold whitespace-nowrap"
+                            style={{ backgroundColor: `${getColor(u.monitorRole)}1A`, color: getColor(u.monitorRole) }}
+                          >
+                            viewer
+                          </span>
+                        )}
+                      </div>
                     </td>
                     <td className="py-3 px-4">
                       <button

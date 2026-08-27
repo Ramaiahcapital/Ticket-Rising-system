@@ -42,6 +42,7 @@ export type UnifiedUser =
       email: string | null;
       role: "transfer";
       stationaryAccess: boolean;
+      monitorRole: string | null;
     };
 
 export function useAuth() {
@@ -85,6 +86,10 @@ export function useAuth() {
       isCluster: user?.type === "cluster",
       isTransfer: user?.type === "transfer",
       hasStationaryAccess: user?.type === "transfer" && !!(user as any).stationaryAccess,
+      /** Transfer user promoted to view-only middle admin (monitors a department). */
+      isMonitor: user?.type === "transfer" && !!(user as any).monitorRole,
+      /** Department the transfer user monitors (view-only). NULL = not a monitor. */
+      monitorRole: user?.type === "transfer" ? ((user as any).monitorRole ?? null) : null,
       isLoading: isLoading || logoutMutation.isPending,
       logout,
     }),

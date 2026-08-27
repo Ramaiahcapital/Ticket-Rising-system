@@ -22,6 +22,7 @@ import {
   UserCog,
   KeyRound,
   Forward,
+  Eye,
 } from "lucide-react";
 
 interface SidebarProps {
@@ -52,6 +53,7 @@ const transferNavBase: NavItem[] = [
   { label: "My Tickets", icon: Ticket, path: "/tickets" },
   { label: "Email Settings", icon: Mail, path: "/email-settings" },
 ];
+const transferMonitorItem: NavItem = { label: "Monitor", icon: Eye, path: "/monitor" };
 const transferStationaryItem: NavItem = { label: "Stationary", icon: Package, path: "/stationary/admin" };
 
 const stationaryAdminNavItems: NavItem[] = [
@@ -239,9 +241,14 @@ export default function Sidebar({ isAdmin, mobile, onClose }: SidebarProps) {
           })
         ) : isTransfer ? (
           (() => {
-            const transferNavItems = hasStationaryAccess
+            const monitorRole = (user as any)?.monitorRole;
+            let transferNavItems = hasStationaryAccess
               ? [...transferNavBase, transferStationaryItem]
-              : transferNavBase;
+              : [...transferNavBase];
+            if (monitorRole) {
+              const monitorIdx = transferNavItems.findIndex((i) => i.path === "/monitor");
+              if (monitorIdx === -1) transferNavItems.unshift(transferMonitorItem);
+            }
             return transferNavItems.map((item) => {
             const isActive = location.pathname === item.path;
             return (

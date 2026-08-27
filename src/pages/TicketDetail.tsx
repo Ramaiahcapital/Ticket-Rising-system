@@ -15,7 +15,7 @@ import {
 export default function TicketDetail() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const { isAdmin, isTransfer } = useAuth();
+  const { isAdmin } = useAuth();
   const { getColor } = useBranchRoles();
   const ticketId = id ?? "";
 
@@ -37,6 +37,7 @@ export default function TicketDetail() {
 
   const utils = trpc.useUtils();
   const { data: ticket, isLoading } = trpc.ticket.byId.useQuery({ id: ticketId });
+  const canAct = (ticket as any)?.canAct ?? isAdmin;
   const { data: comments } = trpc.ticketComment.list.useQuery({ ticketId });
   const { data: timeline } = trpc.ticketTimeline.list.useQuery({ ticketId });
   const { data: statuses } = trpc.ticketStatus.listEnabled.useQuery();
@@ -289,6 +290,7 @@ export default function TicketDetail() {
           </div>
 
           <div className="flex items-center gap-2 flex-wrap">
+            {canAct && (
             <button
               onClick={() => setReplyOpen((o) => !o)}
               disabled={!liveChatEnabled}
@@ -301,8 +303,9 @@ export default function TicketDetail() {
               <Send className="w-4 h-4" />
               {replyOpen ? "Close Reply" : "Reply"}
             </button>
+            )}
 
-            {(isAdmin || isTransfer) && (
+            {canAct && (
               <button
                 onClick={() => {
                   if (confirm("Send an email notification to the branch user about your latest reply?")) {
@@ -331,7 +334,7 @@ export default function TicketDetail() {
             </button>
             )}
 
-            {(isAdmin || isTransfer) && (
+            {canAct && (
               <div className="relative">
               <button
                 onClick={() => setStatusDropdown(!statusDropdown)}
@@ -452,7 +455,7 @@ export default function TicketDetail() {
                                   <div className="flex items-center gap-2">
                                     <p className="text-sm font-medium text-gray-800">{c.authorName}</p>
                                     {isAdminAuthor && (
-                                      <span className="px-1.5 py-0.5 bg-red-50 text-red-600 text-[10px] rounded font-medium">Admin</span>
+                                      <span className="px-1.5 py-0.5 bg-red-50 text-red-600 text-[10px] rounded font-medium">Sub Admin</span>
                                     )}
                                     {isTransferAuthor && (
                                       <span className="px-1.5 py-0.5 bg-purple-50 text-purple-600 text-[10px] rounded font-medium">Transfer User</span>

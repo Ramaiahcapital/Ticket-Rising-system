@@ -218,22 +218,30 @@ export async function getUserEmail(
 /**
  * Admins who should receive role-specific notifications/emails for a ticket:
  * the sub-admins in the matching bucket plus every main admin.
+ * Also includes transfer users whose monitorRole matches the bucket (middle admins).
  */
 export async function getRoleAdminRecipients(
   role: string | null,
   opts: { excludeId?: string; activeOnly?: boolean } = {}
 ): Promise<Profile[]> {
   const supabase = getSupabaseAdmin();
-  let query = supabase.from("profiles").select("*").eq("role", "admin");
+  let query = supabase.from("profiles").select("*");
   if (opts.activeOnly) query = query.eq("isActive", true);
 
   const { data } = await query;
-  const admins = (data as Profile[] | null) ?? [];
+  const users = (data as Profile[] | null) ?? [];
 
-  return admins.filter((a) => {
-    if (opts.excludeId && a.id === opts.excludeId) return false;
-    // Sub-admin buckets matching the ticket's branch role, plus all main admins.
-    return !a.adminRole || a.adminRole === role;
+  return users.filter((u) => {
+    if (opts.excludeId && u.id === opts.excludeId) return false;
+    if (u.role === "admin") {
+      // Sub-admin buckets matching the ticket's branch role, plus all main admins.
+      return !u.adminRole || u.adminRole === role;
+    }
+    if (u.role === "transfer") {
+      // Middle admins (transfer users with monitor access) for the matching department.
+      return !!(u as any).monitorRole && (u as any).monitorRole === role;
+    }
+    return false;
   });
 }
 
@@ -254,7 +262,9 @@ export async function notifyRoleAdmins(
   await supabase.from("notifications").insert(
     recipients.map((r) => ({
       recipientId: r.id,
-      recipientType: "admin" as const,
+      recipientType: (r.role === "admin" ? "admin" : "transfer") as
+        | "admin"
+        | "transfer",
       title: params.title,
       message: params.message,
       type: params.type,
