@@ -14,7 +14,8 @@ export default function TicketList() {
   const deptParam = searchParams.get("department");
   const { isAdmin, isTransfer } = useAuth();
   const { activeRoles, getColor } = useBranchRoles();
-  const [displayLimit, setDisplayLimit] = useState(10);
+  const limit = 10;
+  const [page, setPage] = useState(1);
   const [search, setSearch] = useState("");
   const [statusId, setStatusId] = useState<string | undefined>();
   const [branchId, setBranchId] = useState<string | undefined>();
@@ -24,11 +25,10 @@ export default function TicketList() {
   const [showFilters, setShowFilters] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
   const [activeBucket, setActiveBucket] = useState<string>(deptParam ?? "all");
-  const limit = 10;
 
   const { data: ticketsData, isLoading } = trpc.ticket.list.useQuery({
-    page: 1,
-    limit: displayLimit,
+    page,
+    limit,
     search: search || undefined,
     statusId,
     branchId,
@@ -106,14 +106,14 @@ export default function TicketList() {
     setSearch("");
     setDateFrom("");
     setDateTo("");
-    setDisplayLimit(10);
+    setPage(1);
   };
 
   const handleBucketClick = (bucket: string) => {
     setActiveBucket(bucket);
     if (bucket === "all") setBranchRole(undefined);
     else setBranchRole(bucket);
-    setDisplayLimit(10);
+    setPage(1);
   };
 
   return (
@@ -201,7 +201,7 @@ export default function TicketList() {
               type="text"
               placeholder="Search by ID, subject, or keyword"
               value={search}
-              onChange={(e) => { setSearch(e.target.value); setDisplayLimit(10); }}
+              onChange={(e) => { setSearch(e.target.value); setPage(1); }}
               className="w-full pl-10 pr-4 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-red-500/20 focus:border-red-500"
             />
           </div>
@@ -220,7 +220,7 @@ export default function TicketList() {
           <div className="mt-3 pt-3 border-t border-gray-100 flex flex-wrap gap-3">
             <select
               value={statusId || ""}
-              onChange={(e) => { setStatusId(e.target.value || undefined); setDisplayLimit(10); }}
+              onChange={(e) => { setStatusId(e.target.value || undefined); setPage(1); }}
               className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:border-red-500"
             >
               <option value="">All Statuses</option>
@@ -231,7 +231,7 @@ export default function TicketList() {
             {isAdmin && (
               <select
                 value={branchId || ""}
-                onChange={(e) => { setBranchId(e.target.value || undefined); setDisplayLimit(10); }}
+                onChange={(e) => { setBranchId(e.target.value || undefined); setPage(1); }}
                 className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:border-red-500"
               >
                 <option value="">All Branches</option>
@@ -243,7 +243,7 @@ export default function TicketList() {
             {isAdmin && (
               <select
                 value={branchRole || ""}
-                onChange={(e) => { setBranchRole(e.target.value || undefined); setDisplayLimit(10); }}
+                onChange={(e) => { setBranchRole(e.target.value || undefined); setPage(1); }}
                 className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:border-red-500"
               >
                 <option value="">All Departments</option>
@@ -255,14 +255,14 @@ export default function TicketList() {
             <input
               type="date"
               value={dateFrom}
-              onChange={(e) => { setDateFrom(e.target.value); setDisplayLimit(10); }}
+              onChange={(e) => { setDateFrom(e.target.value); setPage(1); }}
               className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:border-red-500"
               placeholder="From"
             />
             <input
               type="date"
               value={dateTo}
-              onChange={(e) => { setDateTo(e.target.value); setDisplayLimit(10); }}
+              onChange={(e) => { setDateTo(e.target.value); setPage(1); }}
               className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:border-red-500"
               placeholder="To"
             />
@@ -375,20 +375,45 @@ export default function TicketList() {
           </table>
         </div>
 
-        {/* Load More */}
+        {/* Pagination */}
         {ticketsData && ticketsData.total > 0 && (
-          <div className="flex flex-col items-center gap-2 px-4 py-4 border-t border-gray-200">
+          <div className="flex flex-col sm:flex-row items-center justify-between gap-3 px-4 py-4 border-t border-gray-200">
             <p className="text-sm text-gray-500">
-              Showing {Math.min(displayLimit, ticketsData.total)} of {ticketsData.total} tickets
+              Showing {(ticketsData.page - 1) * limit + 1}–
+              {Math.min(ticketsData.page * limit, ticketsData.total)} of {ticketsData.total} tickets
             </p>
-            {ticketsData.total > displayLimit && (
+            <div className="flex items-center gap-1">
               <button
-                onClick={() => setDisplayLimit(d => d + limit)}
-                className="px-6 py-2 border border-gray-300 text-sm font-medium rounded-lg hover:bg-gray-50 transition-colors"
+                onClick={() => setPage((p) => Math.max(1, p - 1))}
+                disabled={page <= 1}
+                className="px-3 py-1.5 border border-gray-300 text-sm font-medium rounded-lg hover:bg-gray-50 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
               >
-                Load More
+                ‹
               </button>
-            )}
+              {Array.from({ length: ticketsData.totalPages }).map((_, i) => {
+                const p = i + 1;
+                return (
+                  <button
+                    key={p}
+                    onClick={() => setPage(p)}
+                    className={`min-w-[2rem] px-2.5 py-1.5 text-sm font-medium rounded-lg transition-colors ${
+                      p === page
+                        ? "bg-red-600 text-white"
+                        : "border border-gray-300 text-gray-700 hover:bg-gray-50"
+                    }`}
+                  >
+                    {p}
+                  </button>
+                );
+              })}
+              <button
+                onClick={() => setPage((p) => Math.min(ticketsData.totalPages, p + 1))}
+                disabled={page >= ticketsData.totalPages}
+                className="px-3 py-1.5 border border-gray-300 text-sm font-medium rounded-lg hover:bg-gray-50 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                ›
+              </button>
+            </div>
           </div>
         )}
       </div>
