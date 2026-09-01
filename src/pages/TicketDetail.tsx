@@ -543,11 +543,11 @@ export default function TicketDetail() {
                                 <input
                                   type="file"
                                   multiple
-                                  accept="image/*,.pdf,.xls,.xlsx,.csv"
+                                  accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.csv"
                                   onChange={(e) => {
                                     const selected = Array.from(e.target.files ?? []);
                                     const valid = selected.filter(f => {
-                                      const allowed = /^(image\/|application\/pdf$|text\/csv$|application\/vnd\.ms-excel$|application\/vnd\.openxmlformats-officedocument\.spreadsheetml\.sheet$)/
+                                      const allowed = /^(image\/|application\/pdf$|text\/csv$|application\/msword$|application\/vnd\.openxmlformats-officedocument\.wordprocessingml\.document$|application\/vnd\.ms-excel$|application\/vnd\.openxmlformats-officedocument\.spreadsheetml\.sheet$)/
                                         .test(f.type);
                                       if (!allowed) return false;
                                       if (f.size > 2 * 1024 * 1024) return false;

@@ -386,18 +386,18 @@ export default function CreateTicket() {
             {filesEnabled && (
               <div className="pt-1">
                 <label className="block text-sm font-medium text-gray-700 mb-1.5">
-                  Attachments <span className="text-xs text-gray-400 font-normal">(up to 5 files — images, PDF, Excel, CSV; max 2MB each)</span>
+                  Attachments <span className="text-xs text-gray-400 font-normal">(up to 5 files — images, PDF, Word, Excel, CSV; max 2MB each)</span>
                 </label>
                 <div className="border-2 border-dashed border-gray-300 rounded-lg p-4">
                   <input
                     type="file"
                     multiple
-                    accept="image/*,.pdf,.xls,.xlsx,.csv"
+                    accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.csv"
                     onChange={(e) => {
                       const selected = Array.from(e.target.files ?? []);
-                      const allowed = /^(image\/|application\/pdf$|text\/csv$|application\/vnd\.ms-excel$|application\/vnd\.openxmlformats-officedocument\.spreadsheetml\.sheet$)/
+                      const allowed = /^(image\/|application\/pdf$|text\/csv$|application\/msword$|application\/vnd\.openxmlformats-officedocument\.wordprocessingml\.document$|application\/vnd\.ms-excel$|application\/vnd\.openxmlformats-officedocument\.spreadsheetml\.sheet$)/
                         .test(selected[0]?.type ?? "");
-                      if (!allowed) { setErrors(prev => ({ ...prev, files: "Only images, PDF, Excel, or CSV files are allowed" })); return false; }
+                      if (!allowed) { setErrors(prev => ({ ...prev, files: "Only images, PDF, Word, Excel, or CSV files are allowed" })); return false; }
                       const valid = selected.filter(f => {
                         if (f.size > 2 * 1024 * 1024) { setErrors(prev => ({ ...prev, files: `${f.name} exceeds 2MB limit` })); return false; }
                         return true;
@@ -415,7 +415,7 @@ export default function CreateTicket() {
                   />
                   <label htmlFor="ticket-files" className="flex flex-col items-center gap-1 cursor-pointer text-gray-500 hover:text-red-600">
                     <ImageIcon className="w-5 h-5" />
-                    <span className="text-xs">Click to select up to 5 files (images, PDF, Excel, CSV)</span>
+                    <span className="text-xs">Click to select up to 5 files (images, PDF, Word, Excel, CSV)</span>
                   </label>
                   {errors.files && <p className="text-xs text-red-600 mt-1 text-center">{errors.files}</p>}
                   {files.length > 0 && (
