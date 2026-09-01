@@ -491,6 +491,50 @@ export const stationaryRouter = createRouter({
               }
             }
           }
+        } else {
+          // No cluster assigned: email the order directly to all admins for review/approval.
+          const { data: admins } = await supabase
+            .from("profiles")
+            .select("id, email")
+            .eq("role", "admin")
+            .eq("isActive", true);
+          const { data: sender } = await supabase
+            .from("profiles")
+            .select("branchName, email")
+            .eq("id", ctx.user.id)
+            .maybeSingle();
+          if (admins?.length && sender?.email) {
+            const branchLabel = sender.branchName || "Branch";
+            const itemList = input.items.map(it => {
+              const item = itemMap.get(it.itemId);
+              return `<tr><td style="padding:6px 8px;border-bottom:1px solid #eee;">${item?.name || it.itemId}</td><td style="padding:6px 8px;border-bottom:1px solid #eee;text-align:center;">${it.quantity}</td></tr>`;
+            }).join("");
+            for (const admin of admins) {
+              if (admin.email) {
+                const res = await sendEmailFromUserResult(
+                  ctx.user.id,
+                  admin.email,
+                  `New Stationary Order from ${branchLabel}`,
+                  `<div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;">
+                    <h2 style="color:#DC2626;">New Stationary Order</h2>
+                    <p>This branch has no cluster assigned, so this order has been routed directly to admins for review.</p>
+                    <table style="width:100%;border-collapse:collapse;">
+                      <tr><td style="padding:8px;font-weight:bold;border-bottom:1px solid #eee;">Branch</td><td style="padding:8px;border-bottom:1px solid #eee;">${branchLabel}</td></tr>
+                      <tr><td style="padding:8px;font-weight:bold;border-bottom:1px solid #eee;">Order Date</td><td style="padding:8px;border-bottom:1px solid #eee;">${input.orderDate || new Date().toISOString().slice(0,10)}</td></tr>
+                    </table>
+                    <h3 style="margin-top:16px;">Items Ordered</h3>
+                    <table style="width:100%;border-collapse:collapse;border:1px solid #eee;">
+                      <thead><tr style="background:#f9fafb;"><th style="padding:6px 8px;text-align:left;border-bottom:2px solid #ddd;">Item</th><th style="padding:6px 8px;text-align:center;border-bottom:2px solid #ddd;">Qty</th></tr></thead>
+                      <tbody>${itemList}</tbody>
+                    </table>
+                    <p style="margin-top:16px;color:#666;">Please review and approve this order in the Ramaiah Capital Stationary Portal.</p>
+                  </div>`
+                );
+                if (res.ok) emailStatus.sent++;
+                else { emailStatus.failed++; emailStatus.errors.push(`${admin.email}: ${res.reason}`); }
+              }
+            }
+          }
         }
       } catch (e) { emailStatus.errors.push(String(e)); }
 
