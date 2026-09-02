@@ -75,6 +75,10 @@ create trigger on_auth_user_created
   after insert on auth.users
   for each row execute function public.handle_new_user();
 
+-- SECURITY: this SECURITY DEFINER trigger must not be callable directly via
+-- /rest/v1/rpc/handle_new_user (triggers run regardless of EXECUTE grants).
+revoke execute on function public.handle_new_user() from public;
+
 -- ─── Ticket Statuses ────────────────────────────────────────────
 create table if not exists public.ticket_statuses (
   id uuid primary key default gen_random_uuid(),

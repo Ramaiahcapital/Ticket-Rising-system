@@ -118,7 +118,9 @@ end $$;
 
 -- Trigger: keep branches.updatedAt fresh
 create or replace function public.set_branch_updated_at()
-returns trigger language plpgsql as $$
+returns trigger language plpgsql
+set search_path = ''
+as $$
 begin
   new."updatedAt" = now();
   return new;

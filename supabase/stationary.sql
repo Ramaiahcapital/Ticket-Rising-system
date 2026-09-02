@@ -61,7 +61,9 @@ create index if not exists idx_stationary_order_items_order on public.stationary
 
 -- Trigger: keep updatedAt fresh
 create or replace function public.set_stationary_updated_at()
-returns trigger language plpgsql as $$
+returns trigger language plpgsql
+set search_path = ''
+as $$
 begin
   new."updatedAt" = now();
   return new;
@@ -78,7 +80,9 @@ create trigger trg_stationary_orders_updated before update on public.stationary_
 
 -- Trigger: keep lineTotal synced
 create or replace function public.set_stationary_line_total()
-returns trigger language plpgsql as $$
+returns trigger language plpgsql
+set search_path = ''
+as $$
 begin
   new."lineTotal" = coalesce(new."unitPrice", 0) * new.quantity;
   return new;

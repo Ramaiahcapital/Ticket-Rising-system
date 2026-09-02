@@ -62,6 +62,10 @@ create trigger on_auth_user_created
   after insert on auth.users
   for each row execute function public.handle_new_user();
 
+-- SECURITY: this SECURITY DEFINER trigger must not be callable directly via
+-- /rest/v1/rpc/handle_new_user (triggers run regardless of EXECUTE grants).
+revoke execute on function public.handle_new_user() from public;
+
 -- 3) Make sure the router's backfill (branches.sql) also can't trip on it.
 --    (idempotent no-op if already applied)
 do $$
