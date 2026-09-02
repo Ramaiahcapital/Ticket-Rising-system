@@ -13,7 +13,8 @@ create table if not exists public.google_auth (
 alter table public.google_auth enable row level security;
 
 drop policy if exists "google_auth_admin_all" on public.google_auth;
-create policy "google_auth_admin_all" on public.google_auth
-  for all using (true) with check (true);
+drop policy if exists "Service role full access on google_auth" on public.google_auth;
+create policy "Service role full access on google_auth" on public.google_auth
+  for all using (auth.role() = 'service_role');
 
 create index if not exists idx_google_auth_user on public.google_auth("userId");
