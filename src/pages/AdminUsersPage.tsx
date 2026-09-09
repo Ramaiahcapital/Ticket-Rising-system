@@ -1,10 +1,10 @@
 import { useState } from "react";
 import { trpc } from "@/providers/trpc";
 import {
-  Plus, Pencil, Trash2, X, Loader2, ToggleLeft, ToggleRight, KeyRound, UserCog,
+  Plus, Pencil, Trash2, X, Loader2, ToggleLeft, ToggleRight, KeyRound, UserCog, Ticket,
 } from "lucide-react";
 
-const EMPTY_FORM = { name: "", username: "", email: "", password: "", adminRole: "", isActive: true };
+const EMPTY_FORM = { name: "", username: "", email: "", password: "", adminRole: "", isActive: true, canRaiseTicket: false };
 
 export default function AdminUsersPage() {
   const [showModal, setShowModal] = useState(false);
@@ -30,6 +30,10 @@ export default function AdminUsersPage() {
     onSuccess: () => utils.adminUser.list.invalidate(),
     onError: (e) => alert(e.message),
   });
+  const toggleCanRaiseTicket = trpc.adminUser.update.useMutation({
+    onSuccess: () => utils.adminUser.list.invalidate(),
+    onError: (e) => alert(e.message),
+  });
   const deleteUser = trpc.adminUser.delete.useMutation({
     onSuccess: () => utils.adminUser.list.invalidate(),
     onError: (e) => alert(e.message),
@@ -42,7 +46,7 @@ export default function AdminUsersPage() {
   const reset = () => { setForm(EMPTY_FORM); setEditingId(null); setShowModal(false); setFormError(""); };
 
   const openEdit = (u: NonNullable<typeof users>["items"][number]) => {
-    setForm({ name: u.name ?? "", username: u.username ?? "", email: u.email ?? "", password: "", adminRole: u.adminRole ?? "", isActive: !!u.isActive });
+    setForm({ name: u.name ?? "", username: u.username ?? "", email: u.email ?? "", password: "", adminRole: u.adminRole ?? "", isActive: !!u.isActive, canRaiseTicket: !!u.canRaiseTicket });
     setEditingId(u.id);
     setShowModal(true);
   };
@@ -61,6 +65,7 @@ export default function AdminUsersPage() {
         email: form.email,
         adminRole: form.adminRole,
         isActive: form.isActive,
+        canRaiseTicket: form.canRaiseTicket,
       });
     } else {
       if (!form.password) { setFormError("Password is required"); return; }
@@ -71,6 +76,7 @@ export default function AdminUsersPage() {
         password: form.password,
         adminRole: form.adminRole,
         isActive: form.isActive,
+        canRaiseTicket: form.canRaiseTicket,
       });
     }
   };
@@ -104,6 +110,7 @@ export default function AdminUsersPage() {
                 <th className="text-left py-3 px-4 text-xs font-semibold text-gray-500 uppercase">Username</th>
                 <th className="text-left py-3 px-4 text-xs font-semibold text-gray-500 uppercase">Email</th>
                 <th className="text-left py-3 px-4 text-xs font-semibold text-gray-500 uppercase">Role</th>
+                <th className="text-left py-3 px-4 text-xs font-semibold text-gray-500 uppercase">Raise Tickets</th>
                 <th className="text-left py-3 px-4 text-xs font-semibold text-gray-500 uppercase">Active</th>
                 <th className="text-left py-3 px-4 text-xs font-semibold text-gray-500 uppercase">Actions</th>
               </tr>
@@ -112,7 +119,7 @@ export default function AdminUsersPage() {
               {isLoading ? (
                 Array.from({ length: 3 }).map((_, i) => (
                   <tr key={i} className="border-b border-gray-50">
-                    {Array.from({ length: 6 }).map((_, j) => (
+                    {Array.from({ length: 7 }).map((_, j) => (
                       <td key={j} className="py-3 px-4"><div className="h-4 bg-gray-200 rounded animate-pulse w-3/4" /></td>
                     ))}
                   </tr>
@@ -125,6 +132,11 @@ export default function AdminUsersPage() {
                     <td className="py-3 px-4 text-sm text-gray-600">{u.email || "-"}</td>
                     <td className="py-3 px-4">
                       <span className="px-2.5 py-1 rounded-full text-xs font-medium bg-blue-50 text-blue-700">{u.adminRole}</span>
+                    </td>
+                    <td className="py-3 px-4">
+                      <button onClick={() => toggleCanRaiseTicket.mutate({ id: u.id, canRaiseTicket: !u.canRaiseTicket })} className="transition-colors" title={u.canRaiseTicket ? "Can raise tickets" : "Cannot raise tickets"}>
+                        {u.canRaiseTicket ? <Ticket className="w-5 h-5 text-green-500" /> : <Ticket className="w-5 h-5 text-gray-300" />}
+                      </button>
                     </td>
                     <td className="py-3 px-4">
                       <button onClick={() => toggleStatus.mutate({ id: u.id })} className="transition-colors">
@@ -189,6 +201,10 @@ export default function AdminUsersPage() {
               <div className="flex items-center gap-2">
                 <input type="checkbox" id="isActive" checked={form.isActive} onChange={e => setForm({...form, isActive: e.target.checked})} className="w-4 h-4 text-red-600 rounded" />
                 <label htmlFor="isActive" className="text-sm text-gray-700">Active</label>
+              </div>
+              <div className="flex items-center gap-2">
+                <input type="checkbox" id="canRaiseTicket" checked={form.canRaiseTicket} onChange={e => setForm({...form, canRaiseTicket: e.target.checked})} className="w-4 h-4 text-red-600 rounded" />
+                <label htmlFor="canRaiseTicket" className="text-sm text-gray-700">Allow to raise tickets</label>
               </div>
               <div className="flex justify-end gap-3 pt-2">
                 <button type="button" onClick={reset} className="px-4 py-2 border border-gray-300 rounded-lg text-sm text-gray-700 hover:bg-gray-50">Cancel</button>

@@ -324,7 +324,10 @@ export const ticketRouter = createRouter({
       const supabase = getSupabaseAdmin();
 
       if (ctx.user.type !== "branch" && ctx.user.type !== "cluster") {
-        throw new Error("Only branch and cluster users can create tickets");
+        // Allow sub-admins with canRaiseTicket flag
+        if (ctx.user.type !== "admin" || !ctx.user.canRaiseTicket) {
+          throw new Error("Only branch and cluster users can create tickets");
+        }
       }
 
       if (input.branchRole) {
@@ -374,19 +377,20 @@ export const ticketRouter = createRouter({
 
       const ticketId = data.id;
       const actorName = getActorName(ctx);
+      const actorType = ctx.user.type === "admin" ? "admin" : "branch";
 
       await createTimelineEntry({
         ticketId,
         action: "ticket_created",
         actorId: ctx.user.id,
-        actorType: "branch",
+        actorType,
         actorName,
         description: `Ticket ${ticketNumber} created`,
       });
 
       await createAuditLog({
         userId: ctx.user.id,
-        userType: "branch",
+        userType: actorType,
         userName: actorName,
         action: "create_ticket",
         entityType: "ticket",

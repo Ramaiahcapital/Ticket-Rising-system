@@ -38,6 +38,8 @@ export type Profile = {
   branchRole: BranchRole | null;
   /** Sub-admin department bucket = a branch_roles.name. NULL = main admin. */
   adminRole: BranchRole | null;
+  /** When true, sub-admin is allowed to raise tickets. */
+  canRaiseTicket: boolean | null;
   branchId: string | null;
   contactPerson: string | null;
   mobile: string | null;
@@ -288,6 +290,8 @@ export type UnifiedUser =
       role: "admin";
       /** Sub-admin department bucket = a branch_roles.name; null = main admin. */
       adminRole: BranchRole | null;
+      /** When true, sub-admin is allowed to raise tickets. */
+      canRaiseTicket: boolean;
       avatar?: string | null;
     }
   | {
@@ -332,6 +336,7 @@ export function mapProfileToUnifiedUser(p: Profile): UnifiedUser {
       email: p.email,
       role: "admin",
       adminRole: p.adminRole,
+      canRaiseTicket: !!p.canRaiseTicket,
       avatar: p.avatar,
     };
   }

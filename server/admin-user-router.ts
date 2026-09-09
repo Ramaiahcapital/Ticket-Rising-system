@@ -49,6 +49,7 @@ export const adminUserRouter = createRouter({
         name: u.name,
         email: u.email,
         adminRole: u.adminRole,
+        canRaiseTicket: !!u.canRaiseTicket,
         isActive: u.isActive,
         createdAt: u.createdAt,
         lastLoginAt: u.lastLoginAt,
@@ -82,6 +83,7 @@ export const adminUserRouter = createRouter({
         name: data.name,
         email: data.email,
         adminRole: data.adminRole,
+        canRaiseTicket: !!data.canRaiseTicket,
         isActive: data.isActive,
         createdAt: data.createdAt,
         lastLoginAt: data.lastLoginAt,
@@ -97,6 +99,7 @@ export const adminUserRouter = createRouter({
         password: z.string().min(6),
         adminRole: z.string().min(1),
         isActive: z.boolean().default(true),
+        canRaiseTicket: z.boolean().default(false),
       })
     )
     .mutation(async ({ ctx, input }) => {
@@ -142,6 +145,7 @@ export const adminUserRouter = createRouter({
             role: "admin",
             adminRole,
             isActive: input.isActive,
+            canRaiseTicket: input.canRaiseTicket,
             createdBy: ctx.user.id,
             updatedAt: new Date().toISOString(),
           },
@@ -168,6 +172,7 @@ export const adminUserRouter = createRouter({
         name: input.name,
         email: input.email,
         adminRole,
+        canRaiseTicket: input.canRaiseTicket,
         isActive: input.isActive,
       };
     }),
@@ -181,6 +186,7 @@ export const adminUserRouter = createRouter({
         username: z.string().min(3).max(100).optional(),
         adminRole: z.string().optional(),
         isActive: z.boolean().optional(),
+        canRaiseTicket: z.boolean().optional(),
       })
     )
     .mutation(async ({ ctx, input }) => {
@@ -223,6 +229,9 @@ export const adminUserRouter = createRouter({
           throw new Error("You cannot deactivate your own account");
         }
         set.isActive = updates.isActive;
+      }
+      if (updates.canRaiseTicket !== undefined) {
+        set.canRaiseTicket = updates.canRaiseTicket;
       }
 
       const { error } = await supabase.from("profiles").update(set).eq("id", id);
