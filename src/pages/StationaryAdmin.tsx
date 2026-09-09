@@ -244,12 +244,32 @@ function OrdersTab() {
   const branchTotals = data?.branchTotals ?? [];
   const grandTotal = data?.grandTotal ?? 0;
 
-  const updateQty = trpc.stationary.updateOrderItemQty.useMutation({ onSuccess: () => utils.stationary.listOrders.invalidate() });
+  const [qtySavingId, setQtySavingId] = useState<string | null>(null);
+  const [deleteSavingId, setDeleteSavingId] = useState<string | null>(null);
+
+  const updateQty = trpc.stationary.updateOrderItemQty.useMutation({
+    onSuccess: () => utils.stationary.listOrders.invalidate(),
+    onSettled: () => setQtySavingId(null),
+  });
   const setStatusM = trpc.stationary.setOrderStatus.useMutation({ onSuccess: () => utils.stationary.listOrders.invalidate() });
   const deleteItemM = trpc.stationary.deleteOrderItem.useMutation({
     onSuccess: () => utils.stationary.listOrders.invalidate(),
     onError: (err) => alert(err.message),
+    onSettled: () => setDeleteSavingId(null),
   });
+
+  const handleUpdateQty = (orderItemId: string, quantity: number) => {
+    setQtySavingId(orderItemId);
+    updateQty.mutate({ orderItemId, quantity });
+  };
+  const handleDeleteItem = (orderItemId: string) => {
+    setDeleteSavingId(orderItemId);
+    deleteItemM.mutate({ orderItemId });
+  };
+  const handleSetStatus = (status: "pending" | "approved" | "dispatched") => {
+    if (!viewOrder) return;
+    setStatusM.mutate({ orderId: viewOrder.id, status });
+  };
 
   const [viewOrderId, setViewOrderId] = useState<string | null>(null);
   const viewOrder = orders.find((o: any) => o.id === viewOrderId) ?? null;
@@ -347,9 +367,11 @@ function OrdersTab() {
           mode="admin"
           canEdit={viewOrder.status !== "cancelled" && viewOrder.status !== "received"}
           onClose={() => setViewOrderId(null)}
-          onUpdateQty={(orderItemId, quantity) => updateQty.mutate({ orderItemId, quantity })}
-          onDeleteItem={(orderItemId) => deleteItemM.mutate({ orderItemId })}
-          onSetStatus={(status) => setStatusM.mutate({ orderId: viewOrder.id, status })}
+          onUpdateQty={handleUpdateQty}
+          onDeleteItem={handleDeleteItem}
+          onSetStatus={handleSetStatus}
+          updatingItemId={qtySavingId}
+          deletingItemId={deleteSavingId}
           statusPending={setStatusM.isPending}
         />
       )}
@@ -389,25 +411,29 @@ function ReportsTab() {
       }
     }
 
-    // Use allItems for full list (including items with 0 orders)
+    // Use allItems for stable ordering, but only keep items that were actually
+    // ordered (totalQty > 0). Items nobody ordered must not appear with 0 values.
     const items = (allItems ?? [])
       .filter((it: any) => it.isActive)
       .sort((a: any, b: any) => (a.name || "").localeCompare(b.name || ""));
 
-    const rows = items.map((it: any, idx: number) => {
-      const bm = qtyMap.get(it.id) ?? new Map();
-      let totalQty = 0;
-      let totalPrice = 0;
-      const unitPrice = bm.values().next().value?.price ?? Number(it.price ?? 0);
-      const branchQtys = branches.map((br: any) => {
-        const entry = bm.get(br.id);
-        const q = entry?.qty ?? 0;
-        totalQty += q;
-        totalPrice += q * unitPrice;
-        return { branchId: br.id, qty: q, price: q * unitPrice };
-      });
-      return { idx: idx + 1, itemId: it.id, name: it.name, unit: it.unit, threshold: it.threshold ?? 0, unitPrice, branchQtys, totalQty, totalPrice };
-    });
+    const rows = items
+      .map((it: any) => {
+        const bm = qtyMap.get(it.id) ?? new Map();
+        let totalQty = 0;
+        let totalPrice = 0;
+        const unitPrice = bm.values().next().value?.price ?? Number(it.price ?? 0);
+        const branchQtys = branches.map((br: any) => {
+          const entry = bm.get(br.id);
+          const q = entry?.qty ?? 0;
+          totalQty += q;
+          totalPrice += q * unitPrice;
+          return { branchId: br.id, qty: q, price: q * unitPrice };
+        });
+        return { itemId: it.id, name: it.name, unit: it.unit, threshold: it.threshold ?? 0, unitPrice, branchQtys, totalQty, totalPrice };
+      })
+      .filter((r) => r.totalQty > 0)
+      .map((r, idx) => ({ idx: idx + 1, ...r }));
 
     return { branches, rows };
   })();
@@ -469,7 +495,8 @@ function ReportsTab() {
         totalPrice: r.totalPrice,
       };
       r.branchQtys.forEach((bq) => {
-        rowData[`qty_${bq.branchId}`] = bq.qty;
+        // Branches that did not order this item get a blank cell (no 0 values)
+        rowData[`qty_${bq.branchId}`] = bq.qty > 0 ? bq.qty : "";
         rowData[`price_${bq.branchId}`] = bq.price > 0 ? bq.price : "";
       });
       const row = ws.addRow(rowData);
@@ -783,8 +810,14 @@ function ReportsTab() {
                     <td className="py-1.5 px-2 text-center border border-gray-200 font-semibold text-gray-700 sticky left-[calc(2.5rem+140px+4rem)] bg-inherit z-10">{r.threshold}</td>
                     {r.branchQtys.map((bq) => (
                       <td key={bq.branchId} className="py-1.5 px-2 text-center border border-gray-200">
-                        <div className={bq.qty > 0 ? "font-medium text-gray-800" : "text-gray-400"}>{bq.qty || 0}</div>
-                        {bq.price > 0 && <div className="text-[10px] text-green-600">₹{bq.price}</div>}
+                        {bq.qty > 0 ? (
+                          <>
+                            <div className="font-medium text-gray-800">{bq.qty}</div>
+                            {bq.price > 0 && <div className="text-[10px] text-green-600">₹{bq.price}</div>}
+                          </>
+                        ) : (
+                          <div className="text-gray-300">–</div>
+                        )}
                       </td>
                     ))}
                     <td className="py-1.5 px-2 text-center border border-gray-200 font-bold text-gray-900 bg-amber-50 print:bg-amber-50">{r.totalQty}</td>

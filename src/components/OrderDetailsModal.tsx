@@ -10,6 +10,10 @@ interface OrderDetailsModalProps {
   canEdit: boolean;
   onUpdateQty: (orderItemId: string, quantity: number) => void;
   onDeleteItem: (orderItemId: string) => void;
+  /** orderItemId currently saving its quantity edit (shows spinner on OK). */
+  updatingItemId?: string | null;
+  /** orderItemId currently being deleted (shows spinner on the trash button). */
+  deletingItemId?: string | null;
   onApprove?: () => void;
   approvePending?: boolean;
   onSetStatus?: (status: "pending" | "approved" | "dispatched") => void;
@@ -28,6 +32,8 @@ export function OrderDetailsModal({
   canEdit,
   onUpdateQty,
   onDeleteItem,
+  updatingItemId,
+  deletingItemId,
   onApprove,
   approvePending,
   onSetStatus,
@@ -120,9 +126,10 @@ export function OrderDetailsModal({
                         {li.threshold > 0 && <span className="text-[10px] text-gray-400">max {li.threshold}</span>}
                         <button
                           onClick={() => { onUpdateQty(li.id, editing!.qty); setEditing(null); }}
-                          className="px-2 py-1 bg-red-600 text-white text-xs rounded-lg"
+                          disabled={updatingItemId != null}
+                          className="flex items-center gap-1 px-2 py-1 bg-red-600 text-white text-xs rounded-lg disabled:opacity-60"
                         >
-                          OK
+                          {updatingItemId === li.id ? <Loader2 className="w-3 h-3 animate-spin" /> : null} OK
                         </button>
                       </>
                     ) : (
@@ -139,10 +146,11 @@ export function OrderDetailsModal({
                   {canEdit && (
                     <button
                       title="Remove item"
+                      disabled={deletingItemId != null}
                       onClick={() => { if (window.confirm(`Remove "${li.name}" from this order?`)) onDeleteItem(li.id); }}
-                      className="p-1.5 hover:bg-red-50 rounded-lg text-gray-400 hover:text-red-600 transition-colors"
+                      className="p-1.5 hover:bg-red-50 rounded-lg text-gray-400 hover:text-red-600 transition-colors disabled:hover:bg-transparent disabled:opacity-60"
                     >
-                      <Trash2 className="w-4 h-4" />
+                      {deletingItemId === li.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
                     </button>
                   )}
                 </div>
@@ -227,12 +235,17 @@ export function OrderDetailsModal({
                   value={["pending", "approved", "dispatched"].includes(order?.status) ? order.status : "pending"}
                   disabled={statusPending}
                   onChange={e => onSetStatus?.(e.target.value as "pending" | "approved" | "dispatched")}
-                  className="px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white focus:border-red-500 outline-none"
+                  className="px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white focus:border-red-500 outline-none disabled:opacity-60"
                 >
                   <option value="pending">Pending</option>
                   <option value="approved">Approved</option>
                   <option value="dispatched">Dispatched</option>
                 </select>
+                {statusPending && (
+                  <span className="flex items-center gap-1 text-sm text-gray-500">
+                    <Loader2 className="w-4 h-4 animate-spin" /> Updating…
+                  </span>
+                )}
               </div>
             </div>
           )
