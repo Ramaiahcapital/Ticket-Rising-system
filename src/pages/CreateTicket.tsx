@@ -47,13 +47,15 @@ export default function CreateTicket() {
     }
   }, [activeRoles]);
 
+  const canRaise = (user as any)?.type === "branch" || (user as any)?.type === "cluster" || ((user as any)?.type === "admin" && !!(user as any)?.canRaiseTicket);
+
   const { data: formConfig } = trpc.ticket.getFormConfig.useQuery(
     { role: selectedRole || undefined },
-    { enabled: ((user as any)?.type === "branch" || (user as any)?.type === "cluster") && !!selectedRole }
+    { enabled: canRaise && !!selectedRole }
   );
   const { data: portalEnabledMap } = trpc.ticket.getPortalEnabled.useQuery(
     undefined,
-    { enabled: (user as any)?.type === "branch" || (user as any)?.type === "cluster" }
+    { enabled: canRaise }
   );
 
   const formConfigData = Array.isArray(formConfig) ? formConfig[0] : formConfig;
