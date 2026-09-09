@@ -11,6 +11,8 @@ export type UnifiedUser =
       role: "admin";
       /** Sub-admin department bucket; null = main admin (sees everything). */
       adminRole: string | null;
+      /** When true, sub-admin is allowed to raise tickets. */
+      canRaiseTicket: boolean;
       avatar?: string | null;
     }
   | {
@@ -80,6 +82,8 @@ export function useAuth() {
       isAdmin: user?.type === "admin",
       /** Main admin (no sub-admin bucket) — has access to all admin features. */
       isMainAdmin: user?.type === "admin" && !user.adminRole,
+      /** Sub-admin with permission to raise tickets. */
+      canRaiseTicket: user?.type === "admin" && !!user.canRaiseTicket,
       /** Sub-admin department bucket, or null for main admins / non-admins. */
       adminRole: user?.type === "admin" ? user.adminRole : null,
       isBranch: user?.type === "branch",

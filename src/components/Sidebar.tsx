@@ -74,7 +74,7 @@ const settingsChildren: NavItem[] = [
 export default function Sidebar({ isAdmin, mobile, onClose }: SidebarProps) {
   const navigate = useNavigate();
   const location = useLocation();
-  const { logout, user, isCluster, isTransfer, hasStationaryAccess } = useAuth();
+  const { logout, user, isCluster, isTransfer, hasStationaryAccess, canRaiseTicket } = useAuth();
   const { getColor } = useBranchRoles();
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
   const [showChangePassword, setShowChangePassword] = useState(false);
@@ -161,6 +161,11 @@ export default function Sidebar({ isAdmin, mobile, onClose }: SidebarProps) {
             <button onClick={() => go("/tickets")} className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all ${location.pathname === "/tickets" ? "bg-red-50 text-red-600 border-l-[3px] border-red-600" : "text-gray-600 hover:bg-gray-50 hover:text-gray-900"}`}>
               <Ticket className={`w-5 h-5 ${location.pathname === "/tickets" ? "text-red-600" : "text-gray-400"}`} /> Tickets
             </button>
+            {canRaiseTicket && (
+              <button onClick={() => go("/tickets/new")} className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all ${location.pathname === "/tickets/new" ? "bg-red-50 text-red-600 border-l-[3px] border-red-600" : "text-gray-600 hover:bg-gray-50 hover:text-gray-900"}`}>
+                <Ticket className={`w-5 h-5 ${location.pathname === "/tickets/new" ? "text-red-600" : "text-gray-400"}`} /> Create Ticket
+              </button>
+            )}
             {isMainAdmin && (
               <button onClick={() => go("/audit-log")} className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all ${location.pathname === "/audit-log" ? "bg-red-50 text-red-600 border-l-[3px] border-red-600" : "text-gray-600 hover:bg-gray-50 hover:text-gray-900"}`}>
                 <ClipboardList className={`w-5 h-5 ${location.pathname === "/audit-log" ? "text-red-600" : "text-gray-400"}`} /> Audit Log

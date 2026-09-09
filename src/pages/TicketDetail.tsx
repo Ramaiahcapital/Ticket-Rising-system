@@ -415,9 +415,12 @@ export default function TicketDetail() {
                             {(ticket as any).createdByProfile?.role === "cluster" && (
                               <span className="ml-1 text-[10px] px-1.5 py-0.5 rounded bg-blue-50 text-blue-600 font-medium">Cluster</span>
                             )}
+                            {(ticket as any).createdByProfile?.role === "admin" && (ticket as any).createdByProfile?.adminRole && (
+                              <span className="ml-1 text-[10px] px-1.5 py-0.5 rounded bg-purple-50 text-purple-600 font-medium">{(ticket as any).createdByProfile.adminRole}</span>
+                            )}
                           </p>
                           <p className="text-[10px] text-gray-400">
-                            {ticket.branch?.branchName || ((ticket as any).creatorCluster ? `Cluster: ${(ticket as any).creatorCluster.name}` : null) || (ticket as any).createdByProfile?.name || ""} · {new Date(ticket.createdAt ?? new Date()).toLocaleDateString()} {new Date(ticket.createdAt ?? new Date()).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                            {ticket.branch?.branchName || ((ticket as any).creatorCluster ? `Cluster: ${(ticket as any).creatorCluster.name}` : null) || ((ticket as any).createdByProfile?.role === "admin" && (ticket as any).createdByProfile?.adminRole ? `Department: ${(ticket as any).createdByProfile.adminRole}` : null) || (ticket as any).createdByProfile?.name || ""} · {new Date(ticket.createdAt ?? new Date()).toLocaleDateString()} {new Date(ticket.createdAt ?? new Date()).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
                           </p>
                         </div>
                       </div>
@@ -660,6 +663,7 @@ export default function TicketDetail() {
                 <span className="ml-auto">
                   {ticket.branch?.branchName
                     || ((ticket as any).creatorCluster ? `Cluster: ${(ticket as any).creatorCluster.name}` : null)
+                    || ((ticket as any).createdByProfile?.role === "admin" && (ticket as any).createdByProfile?.adminRole ? `Department: ${(ticket as any).createdByProfile.adminRole}` : null)
                     || (ticket as any).createdByProfile?.name
                     || "-"}
                 </span>
@@ -684,6 +688,9 @@ export default function TicketDetail() {
                   {(ticket as any).createdByProfile?.name || ticket.branch?.contactPerson || "-"}
                   {(ticket as any).createdByProfile?.role === "cluster" && (
                     <span className="ml-1 text-[10px] px-1.5 py-0.5 rounded bg-blue-50 text-blue-600 font-medium">Cluster</span>
+                  )}
+                  {(ticket as any).createdByProfile?.role === "admin" && (ticket as any).createdByProfile?.adminRole && (
+                    <span className="ml-1 text-[10px] px-1.5 py-0.5 rounded bg-purple-50 text-purple-600 font-medium">{(ticket as any).createdByProfile.adminRole}</span>
                   )}
                 </span>
               </div>
