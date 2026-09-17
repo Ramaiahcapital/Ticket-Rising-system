@@ -44,7 +44,21 @@ export const ticketCommentRouter = createRouter({
       let hasAccess = false;
       if (ctx.user.type === "branch" && ticket.branchId === ctx.user.id) hasAccess = true;
       else if (ctx.user.type === "admin" && canAdminAccessTicket(ctx.user, ticket.branchRole)) hasAccess = true;
-      else if (ctx.user.type === "cluster") hasAccess = true;
+      else if (ctx.user.type === "cluster") {
+        const clusterId = (ctx.user as any).clusterId ?? null;
+        // Clusters can read comments on tickets they raised and on tickets raised
+        // by branches assigned to their cluster.
+        if (ticket.branchId === ctx.user.id) {
+          hasAccess = true;
+        } else if (clusterId) {
+          const { data: creator } = await supabase
+            .from("profiles")
+            .select("clusterId, role")
+            .eq("id", ticket.branchId)
+            .maybeSingle();
+          if (creator?.role === "branch" && creator.clusterId === clusterId) hasAccess = true;
+        }
+      }
       if (!hasAccess) {
         const email = await getUserEmail(ctx.user);
         // Middle admin: view-only access to their monitored department's tickets.
@@ -102,7 +116,7 @@ export const ticketCommentRouter = createRouter({
       let hasAccess = false;
       if (ctx.user.type === "branch" && ticket.branchId === ctx.user.id) hasAccess = true;
       else if (ctx.user.type === "admin" && canAdminAccessTicket(ctx.user, ticket.branchRole)) hasAccess = true;
-      else if (ctx.user.type === "cluster") hasAccess = true;
+      else if (ctx.user.type === "cluster") hasAccess = ticket.branchId === ctx.user.id;
       else if (ctx.user.type === "transfer") {
         const email = await getUserEmail(ctx.user);
         if (await hasTransferAccess(ctx.user.id, email, input.ticketId)) hasAccess = true;

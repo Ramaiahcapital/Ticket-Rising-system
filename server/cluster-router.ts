@@ -385,6 +385,86 @@ export const clusterRouter = createRouter({
     }));
   }),
 
+  // ---------------- Cluster admin: list branch tickets (view-only) ----------------
+  branchTickets: authedQuery
+    .input(
+      z.object({
+        page: z.number().default(1),
+        limit: z.number().default(10),
+        search: z.string().optional(),
+        statusId: z.string().optional(),
+        branchRole: z.string().max(100).optional(),
+        dateFrom: z.string().optional(),
+        dateTo: z.string().optional(),
+      }).optional()
+    )
+    .query(async ({ ctx, input }) => {
+      const supabase = getSupabaseAdmin();
+      const user = ctx.user as { type: string; clusterId?: string | null };
+      const params = input || { page: 1, limit: 10 };
+      if (!user.clusterId) return { items: [], total: 0, page: params.page, limit: params.limit, totalPages: 0 };
+
+      // All branch profiles assigned to this cluster
+      const { data: branchRows } = await supabase
+        .from("profiles")
+        .select("id, branchName, branchCode, branchRole")
+        .eq("clusterId", user.clusterId)
+        .eq("role", "branch")
+        .eq("isActive", true);
+      const branchIds = (branchRows ?? []).map((b: any) => b.id);
+      if (branchIds.length === 0) return { items: [], total: 0, page: params.page, limit: params.limit, totalPages: 0 };
+
+      let query = supabase
+        .from("tickets")
+        .select("*", { count: "exact" })
+        .in("branchId", branchIds);
+
+      if (params.search) {
+        query = query.or(
+          `ticketNumber.ilike.%${params.search}%,subject.ilike.%${params.search}%,description.ilike.%${params.search}%`
+        );
+      }
+      if (params.statusId) query = query.eq("statusId", params.statusId);
+      if (params.branchRole) query = query.eq("branchRole", params.branchRole);
+      if (params.dateFrom) query = query.gte("createdAt", params.dateFrom);
+      if (params.dateTo) query = query.lte("createdAt", params.dateTo);
+
+      const from = (params.page - 1) * params.limit;
+      const { data, count, error } = await query
+        .order("createdAt", { ascending: false })
+        .range(from, from + params.limit - 1);
+      if (error) throw new Error(error.message);
+
+      const items = (data ?? []).map((t: any) => {
+        const branch = branchRows?.find((b: any) => b.id === t.branchId);
+        return {
+          id: t.id,
+          ticketNumber: t.ticketNumber,
+          subject: t.subject,
+          description: t.description,
+          branchId: t.branchId,
+          branchRole: t.branchRole,
+          statusId: t.statusId,
+          priorityId: t.priorityId,
+          categoryId: t.categoryId,
+          createdAt: t.createdAt,
+          updatedAt: t.updatedAt,
+          branch: branch
+            ? { id: branch.id, branchName: branch.branchName, branchCode: branch.branchCode, contactPerson: null }
+            : null,
+        };
+      });
+
+      const total = count ?? 0;
+      return {
+        items,
+        total,
+        page: params.page,
+        limit: params.limit,
+        totalPages: Math.ceil(total / params.limit),
+      };
+    }),
+
   // ---------------- Cluster admin: list orders for branches in their cluster ----------------
   clusterOrders: authedQuery
     .input(z.object({ clusterId: z.string(), status: z.string().optional(), month: z.string().optional() }).optional())

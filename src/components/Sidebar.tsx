@@ -45,6 +45,7 @@ const clusterNavItems: NavItem[] = [
   { label: "Dashboard", icon: LayoutDashboard, path: "/" },
   { label: "My Tickets", icon: Ticket, path: "/tickets" },
   { label: "Create Ticket", icon: Ticket, path: "/tickets/new" },
+  { label: "Branches Tickets", icon: Eye, path: "/cluster/branch-tickets" },
   { label: "Orders", icon: Package, path: "/cluster/orders" },
   { label: "Email Settings", icon: Mail, path: "/email-settings" },
 ];

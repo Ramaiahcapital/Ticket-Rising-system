@@ -21,6 +21,7 @@ import BranchesPage from "@/pages/BranchesPage";
 import ClusterManagement from "@/pages/ClusterManagement";
 import ClusterDashboard from "@/pages/ClusterDashboard";
 import ClusterOrders from "@/pages/ClusterOrders";
+import ClusterBranchTickets from "@/pages/ClusterBranchTickets";
 import TicketFormConfig from "@/pages/TicketFormConfig";
 import RolesManagement from "@/pages/RolesManagement";
 import EmailConnectPage from "@/pages/EmailConnectPage";
@@ -217,6 +218,14 @@ export default function App() {
         element={
           <ProtectedRoute>
             <ClusterOrders />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/cluster/branch-tickets"
+        element={
+          <ProtectedRoute>
+            <ClusterBranchTickets />
           </ProtectedRoute>
         }
       />

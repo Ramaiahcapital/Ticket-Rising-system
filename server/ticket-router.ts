@@ -258,8 +258,23 @@ export const ticketRouter = createRouter({
       let hasAccess = false;
       if (ctx.user.type === "branch" && ticket.branchId === ctx.user.id) hasAccess = true;
       else if (ctx.user.type === "admin" && canAdminAccessTicket(ctx.user, ticket.branchRole)) hasAccess = true;
-      else if (ctx.user.type === "cluster") hasAccess = true;
-      else if (ctx.user.type === "transfer") {
+      else if (ctx.user.type === "cluster") {
+        const clusterId = (ctx.user as any).clusterId ?? null;
+        // A cluster can view tickets raised by branches assigned to it (view-only)
+        // and tickets it raised itself.
+        if (ticket.branchId === ctx.user.id) {
+          hasAccess = true;
+        } else if (clusterId) {
+          const { data: creator } = await supabase
+            .from("profiles")
+            .select("clusterId, role")
+            .eq("id", ticket.branchId)
+            .maybeSingle();
+          if (creator?.role === "branch" && creator.clusterId === clusterId) {
+            hasAccess = true;
+          }
+        }
+      } else if (ctx.user.type === "transfer") {
         const email = await getUserEmail(ctx.user);
         // View-only access as a middle admin (monitors their assigned department).
         const monitorRole = (ctx.user as any).monitorRole ?? null;
@@ -273,12 +288,12 @@ export const ticketRouter = createRouter({
       if (!hasAccess) throw new Error("Access denied");
 
       // Whether the current user can ACT on this ticket (reply/notify/change status).
-      // Monitors (middle admins) can VIEW department tickets but can only act on tickets
-      // actually transferred to them, never on monitored-only tickets.
+      // Clusters can only act on tickets they raised themselves — branch tickets
+      // are strictly view-only for them.
       let canAct = false;
       if (ctx.user.type === "branch" && ticket.branchId === ctx.user.id) canAct = true;
       else if (ctx.user.type === "admin" && canAdminAccessTicket(ctx.user, ticket.branchRole)) canAct = true;
-      else if (ctx.user.type === "cluster") canAct = true;
+      else if (ctx.user.type === "cluster") canAct = ticket.branchId === ctx.user.id;
       else if (ctx.user.type === "transfer") {
         const email = await getUserEmail(ctx.user);
         if (await hasTransferAccess(ctx.user.id, email, input.id)) canAct = true;
@@ -479,6 +494,9 @@ export const ticketRouter = createRouter({
       if (ctx.user.type === "admin" && !canAdminAccessTicket(ctx.user, ticket.branchRole)) {
         throw new Error("Access denied");
       }
+      if (ctx.user.type === "cluster" && ticket.branchId !== ctx.user.id) {
+        throw new Error("Access denied");
+      }
 
       const set: Partial<TicketRow> = { updatedAt: new Date().toISOString() };
       if (updates.subject !== undefined) set.subject = updates.subject;
@@ -519,7 +537,7 @@ export const ticketRouter = createRouter({
       let hasAccess = false;
       if (ctx.user.type === "branch" && ticket.branchId === ctx.user.id) hasAccess = true;
       else if (ctx.user.type === "admin" && canAdminAccessTicket(ctx.user, ticket.branchRole)) hasAccess = true;
-      else if (ctx.user.type === "cluster") hasAccess = true;
+      else if (ctx.user.type === "cluster") hasAccess = ticket.branchId === ctx.user.id;
       else if (ctx.user.type === "transfer") {
         const email = await getUserEmail(ctx.user);
         if (await hasTransferAccess(ctx.user.id, email, input.ticketId)) hasAccess = true;
@@ -918,7 +936,7 @@ export const ticketRouter = createRouter({
 
       let hasAccess = false;
       if (ctx.user.type === "admin" && canAdminAccessTicket(ctx.user, ticket.branchRole)) hasAccess = true;
-      else if (ctx.user.type === "cluster") hasAccess = true;
+      else if (ctx.user.type === "cluster") hasAccess = ticket.branchId === ctx.user.id;
       else if (ctx.user.type === "transfer") {
         const email = await getUserEmail(ctx.user);
         if (await hasTransferAccess(ctx.user.id, email, input.ticketId)) hasAccess = true;
