@@ -570,18 +570,6 @@ export const ticketRouter = createRouter({
         if (newStatus.name === "Solved") {
           updateData.solvedAt = new Date().toISOString();
         }
-        // Auto-delete attachments when ticket is closed
-        try {
-          const { data: attachments } = await supabase
-            .from("ticket_attachments")
-            .select("filePath")
-            .eq("ticketId", input.ticketId);
-          if (attachments?.length) {
-            const paths = attachments.map(a => a.filePath);
-            await supabase.storage.from("ticket-attachments").remove(paths);
-            await supabase.from("ticket_attachments").delete().eq("ticketId", input.ticketId);
-          }
-        } catch { /* cleanup non-critical */ }
       }
 
       const actorName = getActorName(ctx);
