@@ -158,6 +158,14 @@ export default function CreateTicket() {
       utils.ticket.list.invalidate();
       utils.dashboard.branchStats.invalidate();
       utils.dashboard.adminStats.invalidate();
+
+      const email = (data as any)?.emailStatus;
+      if (email && email.failed > 0) {
+        alert(
+          `Ticket ${data.ticketNumber} was created, but the email notification could not be sent.\n\nReason:\n${(email.errors || []).join("\n")}\n\nConnect your Gmail under Email Settings to fix this.`
+        );
+      }
+
       navigate(`/tickets/${data.id}`);
     },
     onError: (err) => {

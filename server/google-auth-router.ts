@@ -12,7 +12,7 @@ import {
 
 export const googleAuthRouter = createRouter({
   authUrl: authedQuery.query(async ({ ctx }) => {
-    const url = getGoogleAuthUrl(ctx.user.id);
+    const url = getGoogleAuthUrl(ctx.user.id, ctx.req);
     return { url };
   }),
 

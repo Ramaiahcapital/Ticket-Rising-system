@@ -24,7 +24,7 @@ app.get("/api/google/callback", async (c) => {
     const { exchangeCodeForTokens, getGoogleEmail } = await import("./email-service.js");
     const { getSupabaseAdmin } = await import("./lib/supabase.js");
 
-    const tokens = await exchangeCodeForTokens(code);
+    const tokens = await exchangeCodeForTokens(code, c.req.raw);
     if (!tokens.access_token || !tokens.refresh_token) {
       return c.redirect("/#/email-settings?google=error");
     }

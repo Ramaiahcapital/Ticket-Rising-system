@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { createRouter, authedQuery, stationaryAdminQuery } from "./middleware.js";
 import { getSupabaseAdmin } from "./lib/supabase.js";
-import { createAuditLog, notifyAllAdmins, notifyBranchUsers, notifyClusterUsers, requireRoleExists } from "./lib/utils.js";
+import { createAuditLog, notifyAllAdmins, notifyBranchUsers, notifyClusterUsers, requireRoleExists, recordEmailError, recordEmailFailure, sendEmailTally } from "./lib/utils.js";
 import type { BranchRole } from "./lib/db-types.js";
 import { sendEmailFromUserResult } from "./email-service.js";
 
@@ -458,7 +458,11 @@ export const stationaryRouter = createRouter({
             .select("name")
             .eq("id", clusterId)
             .maybeSingle();
-          if (clusterUsers?.length && sender?.email) {
+          if (!clusterUsers?.length) {
+            recordEmailFailure(emailStatus, "No active cluster users found for this branch's cluster.");
+          } else if (!sender?.email) {
+            recordEmailFailure(emailStatus, "Your profile has no email address on record.");
+          } else {
             const branchLabel = sender.branchName || "Branch";
             const clusterLabel = clusterInfo?.name || "Cluster";
             const itemList = input.items.map(it => {
@@ -466,12 +470,12 @@ export const stationaryRouter = createRouter({
               return `<tr><td style="padding:6px 8px;border-bottom:1px solid #eee;">${item?.name || it.itemId}</td><td style="padding:6px 8px;border-bottom:1px solid #eee;text-align:center;">${it.quantity}</td></tr>`;
             }).join("");
             for (const cu of clusterUsers) {
-              if (cu.email) {
-                const res = await sendEmailFromUserResult(
-                  ctx.user.id,
-                  cu.email,
-                  `New Stationary Order from ${branchLabel}`,
-                  `<div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;">
+              await sendEmailTally(
+                emailStatus,
+                ctx.user.id,
+                cu.email,
+                `New Stationary Order from ${branchLabel}`,
+                `<div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;">
                     <h2 style="color:#DC2626;">New Stationary Order</h2>
                     <table style="width:100%;border-collapse:collapse;">
                       <tr><td style="padding:8px;font-weight:bold;border-bottom:1px solid #eee;">Branch</td><td style="padding:8px;border-bottom:1px solid #eee;">${branchLabel}</td></tr>
@@ -485,10 +489,7 @@ export const stationaryRouter = createRouter({
                     </table>
                     <p style="margin-top:16px;color:#666;">Please review and approve this order in the Ramaiah Capital Stationary Portal.</p>
                   </div>`
-                );
-                if (res.ok) emailStatus.sent++;
-                else { emailStatus.failed++; emailStatus.errors.push(`${cu.email}: ${res.reason}`); }
-              }
+              );
             }
           }
         } else {
@@ -503,19 +504,23 @@ export const stationaryRouter = createRouter({
             .select("branchName, email")
             .eq("id", ctx.user.id)
             .maybeSingle();
-          if (admins?.length && sender?.email) {
+          if (!admins?.length) {
+            recordEmailFailure(emailStatus, "No active admins found to notify about this order.");
+          } else if (!sender?.email) {
+            recordEmailFailure(emailStatus, "Your profile has no email address on record.");
+          } else {
             const branchLabel = sender.branchName || "Branch";
             const itemList = input.items.map(it => {
               const item = itemMap.get(it.itemId);
               return `<tr><td style="padding:6px 8px;border-bottom:1px solid #eee;">${item?.name || it.itemId}</td><td style="padding:6px 8px;border-bottom:1px solid #eee;text-align:center;">${it.quantity}</td></tr>`;
             }).join("");
             for (const admin of admins) {
-              if (admin.email) {
-                const res = await sendEmailFromUserResult(
-                  ctx.user.id,
-                  admin.email,
-                  `New Stationary Order from ${branchLabel}`,
-                  `<div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;">
+              await sendEmailTally(
+                emailStatus,
+                ctx.user.id,
+                admin.email,
+                `New Stationary Order from ${branchLabel}`,
+                `<div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;">
                     <h2 style="color:#DC2626;">New Stationary Order</h2>
                     <p>This branch has no cluster assigned, so this order has been routed directly to admins for review.</p>
                     <table style="width:100%;border-collapse:collapse;">
@@ -529,14 +534,11 @@ export const stationaryRouter = createRouter({
                     </table>
                     <p style="margin-top:16px;color:#666;">Please review and approve this order in the Ramaiah Capital Stationary Portal.</p>
                   </div>`
-                );
-                if (res.ok) emailStatus.sent++;
-                else { emailStatus.failed++; emailStatus.errors.push(`${admin.email}: ${res.reason}`); }
-              }
+              );
             }
           }
         }
-      } catch (e) { emailStatus.errors.push(String(e)); }
+      } catch (e) { recordEmailError(emailStatus, e); }
 
       // In-app notifications: admins + cluster
       const { data: branchInfo } = await supabase
@@ -552,7 +554,7 @@ export const stationaryRouter = createRouter({
 
       await createAuditLog({ userId: ctx.user.id, userType: "branch", userName: ctx.user.name, action: "place_stationary_order", entityType: "stationaryOrder", entityId: orderId, details: { emailStatus } });
 
-      return { id: orderId };
+      return { id: orderId, emailStatus };
     }),
 
   // ---------------- Branch: my orders ----------------

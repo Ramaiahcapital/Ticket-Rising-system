@@ -1,4 +1,5 @@
 import { getSupabaseAdmin } from "./supabase.js";
+import { sendEmailFromUserResult } from "../email-service.js";
 import type {
   AuditLogRow,
   NotificationRow,
@@ -289,4 +290,45 @@ export async function requireRoleExists(supabase: ReturnType<typeof getSupabaseA
   if (!(await roleExists(supabase, role))) {
     throw new Error(`Branch role "${role}" does not exist`);
   }
+}
+
+export type EmailStatus = { sent: number; failed: number; errors: string[] };
+
+export function newEmailStatus(): EmailStatus {
+  return { sent: 0, failed: 0, errors: [] };
+}
+
+/** Record a per-recipient send failure. */
+export function recordEmailFailure(status: EmailStatus, reason: string): void {
+  status.failed++;
+  status.errors.push(reason);
+}
+
+/**
+ * Record an unexpected throw (query failure, etc). Counts as a failure so a
+ * crash in the middle of the email block can never be reported as "all sent".
+ */
+export function recordEmailError(status: EmailStatus, e: unknown): void {
+  status.failed++;
+  status.errors.push(e instanceof Error ? e.message : String(e));
+}
+
+/**
+ * Send one email and tally the result. Recipients without an address are
+ * counted as failures instead of being silently skipped.
+ */
+export async function sendEmailTally(
+  status: EmailStatus,
+  senderId: string,
+  to: string | null | undefined,
+  subject: string,
+  htmlBody: string
+): Promise<void> {
+  if (!to) {
+    recordEmailFailure(status, "recipient has no email address on their profile");
+    return;
+  }
+  const res = await sendEmailFromUserResult(senderId, to, subject, htmlBody);
+  if (res.ok) status.sent++;
+  else recordEmailFailure(status, `${to}: ${res.reason}`);
 }

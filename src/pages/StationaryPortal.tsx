@@ -18,12 +18,18 @@ export default function StationaryPortal() {
   const { data: items, isLoading } = trpc.stationary.getOrderableItems.useQuery(undefined, { enabled: !!status.data?.canOrder });
   const myOrders = trpc.stationary.myOrders.useQuery();
   const placeOrder = trpc.stationary.placeOrder.useMutation({
-    onSuccess: () => {
+    onSuccess: (res) => {
       setCart({});
       setShowConfirm(false);
       utils.stationary.myOrders.invalidate();
       utils.stationary.getOrderableItems.invalidate();
       setPlaced(true);
+      const email = (res as any)?.emailStatus;
+      if (email && email.failed > 0) {
+        alert(
+          `Order placed, but the notification email could not be sent.\n\nReason:\n${(email.errors || []).join("\n")}\n\nConnect your Gmail under Email Settings to fix this.`
+        );
+      }
     },
     onError: (e) => { setError(e.message); setShowConfirm(false); },
   });

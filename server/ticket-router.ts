@@ -14,6 +14,10 @@ import {
   notifyRoleAdmins,
   hasTransferAccess,
   getUserEmail,
+  newEmailStatus,
+  recordEmailError,
+  recordEmailFailure,
+  sendEmailTally,
 } from "./lib/utils.js";
 import { sendEmailFromUser } from "./email-service.js";
 import type { TrpcContext } from "./context.js";
@@ -421,6 +425,7 @@ export const ticketRouter = createRouter({
       });
 
       // Send email from branch user to the admins relevant to this ticket's department
+      const emailStatus = newEmailStatus();
       try {
         const supabase = getSupabaseAdmin();
 
@@ -434,22 +439,28 @@ export const ticketRouter = createRouter({
             .maybeSingle();
           if (roleSetting?.emailNotifications === false) emailEnabled = false;
         }
-        if (emailEnabled) {
+        if (!emailEnabled) {
+          recordEmailFailure(emailStatus, `Email notifications are turned off for the "${ticketRole}" department.`);
+        } else {
           const admins = await getRoleAdminRecipients(ticketRole, { activeOnly: true });
           const { data: sender } = await supabase
             .from("profiles")
             .select("branchName, email")
             .eq("id", ctx.user.id)
             .maybeSingle();
-          if (admins.length && sender?.email) {
+          if (!admins.length) {
+            recordEmailFailure(emailStatus, `No admin is configured to receive "${ticketRole ?? "any"}" department emails.`);
+          } else if (!sender?.email) {
+            recordEmailFailure(emailStatus, "Your profile has no email address on record.");
+          } else {
             const branchLabel = sender.branchName || "Branch";
             for (const admin of admins) {
-              if (admin.email) {
-                await sendEmailFromUser(
-                  ctx.user.id,
-                  admin.email,
-                  `New Ticket: ${ticketNumber} - ${subject}`,
-                  `<div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;">
+              await sendEmailTally(
+                emailStatus,
+                ctx.user.id,
+                admin.email,
+                `New Ticket: ${ticketNumber} - ${subject}`,
+                `<div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;">
                     <h2 style="color:#DC2626;">New Support Ticket</h2>
                     <table style="width:100%;border-collapse:collapse;">
                       <tr><td style="padding:8px;font-weight:bold;border-bottom:1px solid #eee;">Ticket #</td><td style="padding:8px;border-bottom:1px solid #eee;">${ticketNumber}</td></tr>
@@ -460,14 +471,26 @@ export const ticketRouter = createRouter({
                     </table>
                     <p style="margin-top:16px;color:#666;">This ticket was raised from the Ramaiah Capital Ticket Management System.</p>
                   </div>`
-                );
-              }
+              );
             }
           }
         }
-      } catch (e) { console.error("Ticket email failed:", e); }
+      } catch (e) {
+        recordEmailError(emailStatus, e);
+        console.error("Ticket email failed:", e);
+      }
 
-      return { id: ticketId, ticketNumber };
+      await createAuditLog({
+        userId: ctx.user.id,
+        userType: actorType,
+        userName: actorName,
+        action: "create_ticket",
+        entityType: "ticket",
+        entityId: ticketId,
+        details: { emailStatus },
+      });
+
+      return { id: ticketId, ticketNumber, emailStatus };
     }),
 
   update: authedQuery

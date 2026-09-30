@@ -15,5 +15,7 @@ export const env = {
   supabaseServiceRoleKey: required("SUPABASE_SERVICE_ROLE_KEY"),
   googleClientId: process.env.GOOGLE_CLIENT_ID || "",
   googleClientSecret: process.env.GOOGLE_CLIENT_SECRET || "",
-  googleRedirectUri: process.env.GOOGLE_REDIRECT_URI || "http://localhost:3000/api/google/callback",
+  // Optional. When empty the OAuth redirect URI is derived from the request
+  // host, so the same build works on localhost and on the deployed domain.
+  googleRedirectUri: process.env.GOOGLE_REDIRECT_URI || "",
 };

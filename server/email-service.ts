@@ -2,16 +2,42 @@ import { google } from "googleapis";
 import { getSupabaseAdmin } from "./lib/supabase.js";
 import { env } from "./lib/env.js";
 
-function createOAuth2Client() {
+const GOOGLE_CALLBACK_PATH = "/api/google/callback";
+
+/**
+ * Work out the OAuth redirect URI for the current request.
+ *
+ * Google requires the redirect_uri used at the token exchange to match the one
+ * used at the authorization request exactly. Deriving it from the incoming
+ * request host keeps that true on localhost, on the Vercel deployment and on
+ * any other host, without needing GOOGLE_REDIRECT_URI to be edited per deploy.
+ * An explicit env var always wins so it can be pinned if needed.
+ */
+export function resolveGoogleRedirectUri(req?: Request | null): string {
+  if (env.googleRedirectUri) return env.googleRedirectUri;
+
+  if (req) {
+    const forwardedHost = req.headers.get("x-forwarded-host") || req.headers.get("host");
+    const forwardedProto = req.headers.get("x-forwarded-proto")?.split(",")[0]?.trim();
+    if (forwardedHost) {
+      const proto = forwardedProto || (forwardedHost.includes("localhost") ? "http" : "https");
+      return `${proto}://${forwardedHost}${GOOGLE_CALLBACK_PATH}`;
+    }
+  }
+
+  return `http://localhost:3000${GOOGLE_CALLBACK_PATH}`;
+}
+
+function createOAuth2Client(redirectUri?: string) {
   return new google.auth.OAuth2(
     env.googleClientId,
     env.googleClientSecret,
-    env.googleRedirectUri
+    redirectUri
   );
 }
 
-export function getGoogleAuthUrl(userId: string): string {
-  const oAuth2Client = createOAuth2Client();
+export function getGoogleAuthUrl(userId: string, req?: Request | null): string {
+  const oAuth2Client = createOAuth2Client(resolveGoogleRedirectUri(req));
   return oAuth2Client.generateAuthUrl({
     access_type: "offline",
     prompt: "consent",
@@ -23,8 +49,8 @@ export function getGoogleAuthUrl(userId: string): string {
   });
 }
 
-export async function exchangeCodeForTokens(code: string) {
-  const oAuth2Client = createOAuth2Client();
+export async function exchangeCodeForTokens(code: string, req?: Request | null) {
+  const oAuth2Client = createOAuth2Client(resolveGoogleRedirectUri(req));
   const { tokens } = await oAuth2Client.getToken(code);
   return tokens;
 }
