@@ -1,10 +1,10 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useMemo, Fragment } from "react";
 import { trpc } from "@/providers/trpc";
-import { Plus, Pencil, Trash2, X, Loader2, Package, Settings2, ClipboardList, BarChart3, Save, Download, Printer, Eye, Search } from "lucide-react";
+import { Plus, Pencil, Trash2, X, Loader2, Package, Settings2, ClipboardList, BarChart3, Save, Download, Printer, Eye, Search, History, AlertTriangle, CheckCircle2, Clock, XCircle, Truck, PackageCheck, ChevronDown, ChevronUp } from "lucide-react";
 import { OrderDetailsModal } from "@/components/OrderDetailsModal";
 import ExcelJS from "exceljs";
 
-type Tab = "items" | "portal" | "orders" | "reports";
+type Tab = "items" | "portal" | "orders" | "audit" | "reports";
 
 export default function StationaryAdmin() {
   const [tab, setTab] = useState<Tab>("items");
@@ -13,6 +13,7 @@ export default function StationaryAdmin() {
     { id: "items", label: "Items", icon: Package },
     { id: "portal", label: "Portal Settings", icon: Settings2 },
     { id: "orders", label: "Orders", icon: ClipboardList },
+    { id: "audit", label: "Order Audit", icon: History },
     { id: "reports", label: "Reports", icon: BarChart3 },
   ];
 
@@ -43,7 +44,309 @@ export default function StationaryAdmin() {
       {tab === "items" && <ItemsTab />}
       {tab === "portal" && <PortalTab />}
       {tab === "orders" && <OrdersTab />}
+      {tab === "audit" && <AuditTab />}
       {tab === "reports" && <ReportsTab />}
+    </div>
+  );
+}
+
+/* ===================== Order Audit ===================== */
+
+type StageKey = "pending_cluster" | "awaiting_admin" | "approved" | "dispatched" | "received" | "fulfilled" | "cancelled";
+
+const STAGE_META: Record<StageKey, { label: string; short: string; cls: string; Icon: React.ComponentType<{ className?: string }> }> = {
+  pending_cluster: { label: "Pending Cluster Approval", short: "Pending cluster", cls: "bg-amber-50 text-amber-700 border-amber-200", Icon: Clock },
+  awaiting_admin: { label: "Awaiting Stationary Admin", short: "Awaiting admin", cls: "bg-blue-50 text-blue-700 border-blue-200", Icon: Clock },
+  approved: { label: "Approved", short: "Approved", cls: "bg-emerald-50 text-emerald-700 border-emerald-200", Icon: CheckCircle2 },
+  dispatched: { label: "Dispatched", short: "Dispatched", cls: "bg-indigo-50 text-indigo-700 border-indigo-200", Icon: Truck },
+  received: { label: "Received by Branch", short: "Received", cls: "bg-teal-50 text-teal-700 border-teal-200", Icon: PackageCheck },
+  fulfilled: { label: "Fulfilled / Closed", short: "Fulfilled", cls: "bg-green-50 text-green-800 border-green-200", Icon: PackageCheck },
+  cancelled: { label: "Cancelled", short: "Cancelled", cls: "bg-gray-100 text-gray-500 border-gray-200", Icon: XCircle },
+};
+
+function StageBadge({ stage }: { stage: string }) {
+  const meta = STAGE_META[stage as StageKey];
+  if (!meta) return <span className="text-xs text-gray-400">-</span>;
+  return (
+    <span className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-xs font-medium ${meta.cls}`}>
+      <meta.Icon className="w-3.5 h-3.5" />
+      {meta.short}
+    </span>
+  );
+}
+
+const money = (n: number) => `₹${Number(n ?? 0).toLocaleString("en-IN", { maximumFractionDigits: 0 })}`;
+
+function AuditTab() {
+  const [month, setMonth] = useState<string>("");
+  const [branchId, setBranchId] = useState<string>("");
+  const [stageFilter, setStageFilter] = useState<string>("");
+  const [groupByMonth, setGroupByMonth] = useState(true);
+  const [viewOrderId, setViewOrderId] = useState<string | null>(null);
+  const [expanded, setExpanded] = useState<string | null>(null);
+
+  const { data: branches } = trpc.stationary.listBranches.useQuery();
+  const { data, isLoading } = trpc.stationary.orderAudit.useQuery({ month: month || undefined, branchId: branchId || undefined });
+
+  const totals = data?.totals;
+  const orders = data?.orders ?? [];
+  const viewOrder = viewOrderId ? orders.find((o: any) => o.id === viewOrderId) : null;
+
+  const visible = useMemo(() => (stageFilter ? orders.filter((o) => o.stage === stageFilter) : orders), [orders, stageFilter]);
+
+  const groups = useMemo((): Array<[string, typeof visible]> => {
+    if (!groupByMonth) return [["All orders", visible]];
+    const acc = visible.reduce<Record<string, typeof visible>>((a, o) => {
+      const key = o.orderDate ? String(o.orderDate).slice(0, 7) : "No date";
+      (acc[key] ||= []).push(o);
+      return a;
+    }, {});
+    return Object.entries(acc).sort((a, b) => b[0].localeCompare(a[0])) as Array<[string, typeof visible]>;
+  }, [visible, groupByMonth]);
+
+  const monthOptions = useMemo(() => {
+    const set = new Set<string>(data?.months ?? []);
+    return Array.from(set).sort().reverse();
+  }, [data?.months]);
+
+  const exportCsv = async () => {
+    if (!orders.length) return;
+    const header = ["Order Date", "Branch", "Branch Code", "Cluster", "Ordered By", "Stage", "Status", "Cluster Approved At", "Cluster Approved By", "Items", "Total"];
+    const rows = orders.map((o) => [
+      o.orderDate ?? "", o.branchName, o.branchCode, o.clusterName, o.orderedBy,
+      STAGE_META[o.stage as StageKey]?.label ?? o.stage, o.status,
+      o.clusterApprovedAt ?? "", o.clusterApprovedByName,
+      o.itemCount, String(o.total),
+    ]);
+    const wb = new ExcelJS.Workbook();
+    const ws = wb.addWorksheet("Stationary Order Audit");
+    ws.addRow(header);
+    rows.forEach((r) => ws.addRow(r));
+    ws.getRow(1).font = { bold: true };
+    ws.columns.forEach((c: any, i: number) => { c.width = [12, 24, 12, 20, 22, 26, 12, 22, 22, 8, 12][i] ?? 14; });
+    const buf = await wb.xlsx.writeBuffer();
+    const url = URL.createObjectURL(new Blob([buf], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }));
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `stationary-order-audit-${month || "last-12-months"}.xlsx`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const cards = [
+    { label: "Orders", value: totals?.orders ?? 0, sub: `${totals?.branches ?? 0} branches`, cls: "text-gray-800" },
+    { label: "Pending cluster approval", value: totals?.pending_cluster ?? 0, sub: "waiting on cluster", cls: (totals?.pending_cluster ?? 0) > 0 ? "text-amber-600" : "text-gray-800" },
+    { label: "Awaiting stationary admin", value: totals?.awaiting_admin ?? 0, sub: "cluster approved", cls: (totals?.awaiting_admin ?? 0) > 0 ? "text-blue-600" : "text-gray-800" },
+    { label: "Open (incl. dispatched)", value: totals?.open ?? 0, sub: "not yet closed", cls: "text-indigo-600" },
+    { label: "Completed", value: totals?.completed ?? 0, sub: "received / fulfilled", cls: "text-emerald-600" },
+    { label: "Order value", value: money(totals?.value ?? 0), sub: `${totals?.cancelled ?? 0} cancelled`, cls: "text-gray-800" },
+  ];
+
+  return (
+    <div className="space-y-4">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h2 className="text-lg font-semibold text-gray-800">Order Audit</h2>
+          <p className="text-sm text-gray-500">Which branches ordered, what is pending approval, and what is completed</p>
+        </div>
+        <button onClick={exportCsv} disabled={!orders.length}
+          className="flex items-center gap-2 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed">
+          <Download className="w-4 h-4" /> Export
+        </button>
+      </div>
+
+      {(totals?.pending_cluster ?? 0) > 0 && (
+        <div className="flex items-start gap-3 rounded-lg border border-amber-200 bg-amber-50 p-3">
+          <AlertTriangle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+          <div className="text-sm text-amber-800">
+            <span className="font-semibold">{totals?.pending_cluster} order(s) still awaiting cluster approval.</span>{" "}
+            These do not appear in the Orders tab until the cluster approves them.
+          </div>
+        </div>
+      )}
+
+      <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
+        {cards.map((c) => (
+          <div key={c.label} className="rounded-lg border border-gray-200 bg-white p-3">
+            <div className="text-xs text-gray-500 uppercase tracking-wide">{c.label}</div>
+            <div className={`mt-1 text-xl font-bold ${c.cls}`}>{c.value}</div>
+            <div className="text-xs text-gray-400">{c.sub}</div>
+          </div>
+        ))}
+      </div>
+
+      <div className="flex flex-wrap items-end gap-3 rounded-lg border border-gray-200 bg-white p-3">
+        <div>
+          <label className="block text-xs font-medium text-gray-600 mb-1">Month</label>
+          <select value={month} onChange={(e) => setMonth(e.target.value)} className="rounded-lg border border-gray-300 px-3 py-1.5 text-sm">
+            <option value="">Last 12 months</option>
+            {monthOptions.map((m) => <option key={m} value={m}>{m}</option>)}
+          </select>
+        </div>
+        <div>
+          <label className="block text-xs font-medium text-gray-600 mb-1">Branch</label>
+          <select value={branchId} onChange={(e) => setBranchId(e.target.value)} className="rounded-lg border border-gray-300 px-3 py-1.5 text-sm">
+            <option value="">All branches</option>
+            {(branches ?? []).map((b: any) => <option key={b.id} value={b.id}>{b.name}{b.code ? ` (${b.code})` : ""}</option>)}
+          </select>
+        </div>
+        <div>
+          <label className="block text-xs font-medium text-gray-600 mb-1">Stage</label>
+          <select value={stageFilter} onChange={(e) => setStageFilter(e.target.value)} className="rounded-lg border border-gray-300 px-3 py-1.5 text-sm">
+            <option value="">All stages</option>
+            {Object.entries(STAGE_META).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
+          </select>
+        </div>
+        <label className="flex items-center gap-2 pb-1.5 text-sm text-gray-700">
+          <input type="checkbox" checked={groupByMonth} onChange={(e) => setGroupByMonth(e.target.checked)} className="rounded" />
+          Group by month
+        </label>
+      </div>
+
+      <div className="rounded-lg border border-gray-200 bg-white overflow-hidden">
+        <div className="border-b border-gray-200 px-4 py-2.5">
+          <h3 className="text-sm font-semibold text-gray-800">Branch-wise summary</h3>
+        </div>
+        {isLoading ? (
+          <div className="flex items-center justify-center gap-2 py-10 text-sm text-gray-500"><Loader2 className="w-4 h-4 animate-spin" /> Loading</div>
+        ) : !data?.branchSummary?.length ? (
+          <div className="py-10 text-center text-sm text-gray-500">No orders in this period</div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead className="bg-gray-50 text-xs text-gray-600">
+                <tr>
+                  <th className="px-3 py-2 text-left font-medium">Branch</th>
+                  <th className="px-3 py-2 text-left font-medium">Cluster</th>
+                  <th className="px-3 py-2 text-right font-medium">Orders</th>
+                  <th className="px-3 py-2 text-right font-medium text-amber-600">Pending cluster</th>
+                  <th className="px-3 py-2 text-right font-medium text-blue-600">Awaiting admin</th>
+                  <th className="px-3 py-2 text-right font-medium text-emerald-600">Approved</th>
+                  <th className="px-3 py-2 text-right font-medium text-indigo-600">Dispatched</th>
+                  <th className="px-3 py-2 text-right font-medium text-teal-600">Completed</th>
+                  <th className="px-3 py-2 text-right font-medium text-gray-500">Cancelled</th>
+                  <th className="px-3 py-2 text-right font-medium">Total</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {data.branchSummary.map((s) => (
+                  <tr key={s.branchId} className="hover:bg-gray-50 cursor-pointer" onClick={() => { setBranchId(s.branchId); window.scrollTo({ top: 0, behavior: "smooth" }); }}>
+                    <td className="px-3 py-2 font-medium text-gray-800">{s.branchName || "-"}</td>
+                    <td className="px-3 py-2 text-gray-600">{s.clusterNames.length ? s.clusterNames.join(", ") : "-"}</td>
+                    <td className="px-3 py-2 text-right">{s.orders}</td>
+                    <td className="px-3 py-2 text-right">{s.pending_cluster > 0 ? <span className="font-semibold text-amber-600">{s.pending_cluster}</span> : <span className="text-gray-300">0</span>}</td>
+                    <td className="px-3 py-2 text-right">{s.awaiting_admin > 0 ? <span className="font-semibold text-blue-600">{s.awaiting_admin}</span> : <span className="text-gray-300">0</span>}</td>
+                    <td className="px-3 py-2 text-right">{s.approved || <span className="text-gray-300">0</span>}</td>
+                    <td className="px-3 py-2 text-right">{s.dispatched || <span className="text-gray-300">0</span>}</td>
+                    <td className="px-3 py-2 text-right">{s.completed || <span className="text-gray-300">0</span>}</td>
+                    <td className="px-3 py-2 text-right">{s.cancelled || <span className="text-gray-300">0</span>}</td>
+                    <td className="px-3 py-2 text-right font-medium">{money(s.total)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
+      <div className="space-y-4">
+        {groups.map(([label, list]) => (
+          <div key={label} className="rounded-lg border border-gray-200 bg-white overflow-hidden">
+            <div className="flex items-center justify-between border-b border-gray-200 px-4 py-2.5">
+              <h3 className="text-sm font-semibold text-gray-800">{groupByMonth ? label : "Order lifecycle"}</h3>
+              <span className="text-xs text-gray-500">{list.length} order(s) · {money(list.reduce((s: number, o: any) => s + o.total, 0))}</span>
+            </div>
+            {!list.length ? (
+              <div className="py-8 text-center text-sm text-gray-500">No orders</div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead className="bg-gray-50 text-xs text-gray-600">
+                    <tr>
+                      <th className="px-3 py-2 text-left font-medium">Order date</th>
+                      <th className="px-3 py-2 text-left font-medium">Branch</th>
+                      <th className="px-3 py-2 text-left font-medium">Cluster</th>
+                      <th className="px-3 py-2 text-left font-medium">Ordered by</th>
+                      <th className="px-3 py-2 text-left font-medium">Cluster approval</th>
+                      <th className="px-3 py-2 text-left font-medium">Stage</th>
+                      <th className="px-3 py-2 text-right font-medium">Items</th>
+                      <th className="px-3 py-2 text-right font-medium">Total</th>
+                      <th className="px-3 py-2" />
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100">
+                    {list.map((o) => (
+                      <Fragment key={o.id}>
+                        <tr className="hover:bg-gray-50">
+                          <td className="px-3 py-2 whitespace-nowrap text-gray-700">{o.orderDate ?? "-"}</td>
+                          <td className="px-3 py-2 font-medium text-gray-800">{o.branchName || "-"}</td>
+                          <td className="px-3 py-2 text-gray-600">{o.clusterName || "-"}</td>
+                          <td className="px-3 py-2 text-gray-600">{o.orderedBy || "-"}</td>
+                          <td className="px-3 py-2 text-xs text-gray-600">
+                            {o.clusterApprovedAt ? (
+                              <span className="text-emerald-700">
+                                {new Date(o.clusterApprovedAt).toLocaleString()}{o.clusterApprovedByName ? ` · ${o.clusterApprovedByName}` : ""}
+                              </span>
+                            ) : o.clusterId ? (
+                              <span className="text-amber-600">Not approved yet</span>
+                            ) : (
+                              <span className="text-gray-400">No cluster</span>
+                            )}
+                          </td>
+                          <td className="px-3 py-2"><StageBadge stage={o.stage} /></td>
+                          <td className="px-3 py-2 text-right">{o.itemCount}</td>
+                          <td className="px-3 py-2 text-right font-medium">{money(o.total)}</td>
+                          <td className="px-3 py-2">
+                            <div className="flex items-center justify-end gap-1">
+                              <button onClick={() => setExpanded(expanded === o.id ? null : o.id)} title="Toggle items"
+                                className="rounded p-1 text-gray-500 hover:bg-gray-100">
+                                {expanded === o.id ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                              </button>
+                              <button onClick={() => setViewOrderId(o.id)} title="Order details"
+                                className="rounded p-1 text-gray-500 hover:bg-gray-100">
+                                <Eye className="w-4 h-4" />
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                        {expanded === o.id && (
+                          <tr className="bg-gray-50/60">
+                            <td colSpan={9} className="px-6 py-2">
+                              <ul className="space-y-0.5 text-xs text-gray-700">
+                                {o.items.map((it) => (
+                                  <li key={it.id} className="flex justify-between gap-4">
+                                    <span>{it.name}{it.unit ? ` (${it.unit})` : ""} × {it.quantity}</span>
+                                    <span className="font-medium">{money(it.lineTotal)}</span>
+                                  </li>
+                                ))}
+                                {!o.items.length && <li className="text-gray-400">No line items</li>}
+                              </ul>
+                            </td>
+                          </tr>
+                        )}
+                      </Fragment>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        ))}
+        {!isLoading && !visible.length && (
+          <div className="rounded-lg border border-gray-200 bg-white py-10 text-center text-sm text-gray-500">No orders match the selected filters</div>
+        )}
+      </div>
+
+      {viewOrder && (
+        <OrderDetailsModal
+          order={viewOrder}
+          mode="admin"
+          canEdit={false}
+          onClose={() => setViewOrderId(null)}
+          onUpdateQty={() => {}}
+          onDeleteItem={() => {}}
+        />
+      )}
     </div>
   );
 }

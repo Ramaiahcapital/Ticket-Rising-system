@@ -1095,6 +1095,177 @@ export const stationaryRouter = createRouter({
       return { orders: mapped, branchTotals, grandTotal };
     }),
 
+  // Full order lifecycle for the Stationary Admin audit view.
+  // listOrders intentionally hides orders still awaiting cluster approval, so it
+  // cannot answer "which branches ordered / what is pending / what is done".
+  orderAudit: stationaryAdminQuery
+    .input(z.object({ month: z.string().optional(), branchId: z.string().optional() }).optional())
+    .query(async ({ input }) => {
+      const supabase = getSupabaseAdmin();
+
+      const deriveStage = (o: { status: string; clusterId: string | null; clusterApprovedAt: string | null }): string => {
+        if (o.status !== "pending") return o.status;
+        // Cluster approval only stamps clusterApprovedAt; status stays "pending"
+        // until the Stationary Admin promotes it to "approved".
+        if (o.clusterId && !o.clusterApprovedAt) return "pending_cluster";
+        return "awaiting_admin";
+      };
+
+      let query = supabase
+        .from("stationary_orders")
+        .select("*, stationary_order_items(*, stationary_items(name, unit, threshold))")
+        .order("orderDate", { ascending: false })
+        .order("createdAt", { ascending: false });
+
+      if (input?.month && /^\d{4}-\d{2}$/.test(input.month)) {
+        const [y, m] = input.month.split("-").map(Number);
+        const endY = m === 12 ? y + 1 : y;
+        const endM = m === 12 ? 1 : m + 1;
+        query = query.gte("orderDate", `${input.month}-01`).lt("orderDate", `${endY}-${String(endM).padStart(2, "0")}-01`);
+      } else {
+        // Keep "all months" bounded to a rolling 12 months.
+        const from = new Date();
+        from.setDate(1);
+        from.setMonth(from.getMonth() - 11);
+        query = query.gte("orderDate", `${from.getFullYear()}-${String(from.getMonth() + 1).padStart(2, "0")}-01`);
+      }
+      if (input?.branchId) query = query.eq("branchId", input.branchId);
+
+      const { data, error } = (await query) as any;
+      if (error) throw new Error(error.message);
+
+      const rows: any[] = data ?? [];
+      const ids = (key: string) => Array.from(new Set(rows.map((o: any) => o[key]).filter(Boolean))) as string[];
+      const branchIds = ids("branchId");
+      const clusterIds = ids("clusterId");
+      const approverIds = ids("clusterApprovedBy");
+      const creatorIds = ids("createdBy");
+      const fallback = branchIds.length ? branchIds : ["00000000-0000-0000-0000-000000000000"];
+      const personIds = Array.from(new Set([...approverIds, ...creatorIds]));
+
+      const [branchesRes, profsRes, clustersRes, peopleRes] = await Promise.all([
+        supabase.from("branches").select("id, name, code").in("id", fallback),
+        supabase.from("profiles").select("id, branchName, branchCode, branchRole").in("id", fallback),
+        clusterIds.length ? supabase.from("clusters").select("id, name").in("id", clusterIds) : Promise.resolve({ data: [] as any[] }),
+        personIds.length ? supabase.from("profiles").select("id, fullName, email").in("id", personIds) : Promise.resolve({ data: [] as any[] }),
+      ]);
+
+      const branchLookup = new Map<string, any>();
+      for (const b of (branchesRes.data ?? []) as any[]) branchLookup.set(b.id, { name: b.name, code: b.code, branchRole: null });
+      for (const p of (profsRes.data ?? []) as any[]) if (!branchLookup.has(p.id)) branchLookup.set(p.id, { name: p.branchName, code: p.branchCode, branchRole: p.branchRole });
+      const clusterLookup = new Map<string, string>();
+      for (const c of (clustersRes.data ?? []) as any[]) clusterLookup.set(c.id, c.name);
+      const personLookup = new Map<string, string>();
+      for (const p of (peopleRes.data ?? []) as any[]) personLookup.set(p.id, p.fullName || p.email || "");
+
+      const orders = rows.map((o: any) => {
+        const b = branchLookup.get(o.branchId);
+        const items = (o.stationary_order_items ?? []) as any[];
+        return {
+          id: o.id,
+          branchId: o.branchId,
+          branchName: b?.name ?? "",
+          branchCode: b?.code ?? "",
+          branchRole: b?.branchRole ?? null,
+          clusterId: o.clusterId ?? null,
+          clusterName: o.clusterId ? clusterLookup.get(o.clusterId) ?? "" : "",
+          orderedBy: personLookup.get(o.createdBy) ?? "",
+          status: o.status,
+          stage: deriveStage(o),
+          clusterApprovedAt: o.clusterApprovedAt ?? null,
+          clusterApprovedByName: o.clusterApprovedBy ? personLookup.get(o.clusterApprovedBy) ?? "" : "",
+          orderDate: o.orderDate,
+          createdAt: o.createdAt,
+          updatedAt: o.updatedAt,
+          total: items.reduce((s: number, li: any) => s + Number(li.lineTotal ?? 0), 0),
+          itemCount: items.reduce((s: number, li: any) => s + Number(li.quantity ?? 0), 0),
+          items: items.map((li: any) => ({
+            id: li.id,
+            name: li.stationary_items?.name ?? "",
+            unit: li.stationary_items?.unit ?? null,
+            quantity: li.quantity ?? 0,
+            lineTotal: li.lineTotal ?? 0,
+          })),
+        };
+      });
+
+      const STAGES = ["pending_cluster", "awaiting_admin", "approved", "dispatched", "received", "fulfilled", "cancelled"] as const;
+
+      const branchSummaryMap = new Map<string, any>();
+      for (const o of orders) {
+        let s = branchSummaryMap.get(o.branchId);
+        if (!s) {
+          s = {
+            branchId: o.branchId,
+            branchName: o.branchName,
+            branchCode: o.branchCode,
+            branchRole: o.branchRole,
+            clusters: new Set<string>(),
+            orders: 0,
+            total: 0,
+            pending_cluster: 0,
+            awaiting_admin: 0,
+            approved: 0,
+            dispatched: 0,
+            received: 0,
+            fulfilled: 0,
+            cancelled: 0,
+          };
+          branchSummaryMap.set(o.branchId, s);
+        }
+        s.orders += 1;
+        s.total += o.total;
+        (s as any)[o.stage] += 1;
+        if (o.clusterName) s.clusters.add(o.clusterName);
+      }
+      const branchSummary = Array.from(branchSummaryMap.values())
+        .map((s: any) => ({
+          branchId: s.branchId,
+          branchName: s.branchName,
+          branchCode: s.branchCode,
+          branchRole: s.branchRole,
+          clusterNames: Array.from(s.clusters as Set<string>),
+          orders: s.orders,
+          total: s.total,
+          pending_cluster: s.pending_cluster,
+          awaiting_admin: s.awaiting_admin,
+          approved: s.approved,
+          dispatched: s.dispatched,
+          received: s.received,
+          fulfilled: s.fulfilled,
+          cancelled: s.cancelled,
+          completed: s.received + s.fulfilled,
+          open: s.pending_cluster + s.awaiting_admin + s.approved + s.dispatched,
+        }))
+        .sort((a, b) => b.total - a.total);
+
+      const byStage: Record<string, number> = {};
+      for (const s of STAGES) byStage[s] = 0;
+      for (const o of orders) byStage[o.stage] += 1;
+
+      const months = Array.from(new Set(orders.map((o) => (o.orderDate ? String(o.orderDate).slice(0, 7) : "")) .filter(Boolean))).sort().reverse();
+
+      return {
+        orders,
+        branchSummary,
+        months,
+        totals: {
+          orders: orders.length,
+          branches: branchSummary.length,
+          value: orders.reduce((s: number, o) => s + o.total, 0),
+          pending_cluster: byStage.pending_cluster,
+          awaiting_admin: byStage.awaiting_admin,
+          approved: byStage.approved,
+          dispatched: byStage.dispatched,
+          received: byStage.received,
+          fulfilled: byStage.fulfilled,
+          cancelled: byStage.cancelled,
+          completed: byStage.received + byStage.fulfilled,
+          open: byStage.pending_cluster + byStage.awaiting_admin + byStage.approved + byStage.dispatched,
+        },
+      };
+    }),
+
   updateOrderItemQty: stationaryAdminQuery
     .input(z.object({ orderItemId: z.string(), quantity: z.number().int().min(0) }))
     .mutation(async ({ ctx, input }) => {
