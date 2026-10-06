@@ -1147,7 +1147,7 @@ export const stationaryRouter = createRouter({
         supabase.from("branches").select("id, name, code").in("id", fallback),
         supabase.from("profiles").select("id, branchName, branchCode, branchRole").in("id", fallback),
         clusterIds.length ? supabase.from("clusters").select("id, name").in("id", clusterIds) : Promise.resolve({ data: [] as any[] }),
-        personIds.length ? supabase.from("profiles").select("id, fullName, email").in("id", personIds) : Promise.resolve({ data: [] as any[] }),
+        personIds.length ? supabase.from("profiles").select("id, name, email").in("id", personIds) : Promise.resolve({ data: [] as any[] }),
       ]);
 
       const branchLookup = new Map<string, any>();
@@ -1156,7 +1156,7 @@ export const stationaryRouter = createRouter({
       const clusterLookup = new Map<string, string>();
       for (const c of (clustersRes.data ?? []) as any[]) clusterLookup.set(c.id, c.name);
       const personLookup = new Map<string, string>();
-      for (const p of (peopleRes.data ?? []) as any[]) personLookup.set(p.id, p.fullName || p.email || "");
+      for (const p of (peopleRes.data ?? []) as any[]) personLookup.set(p.id, p.name || p.email || "");
 
       const orders = rows.map((o: any) => {
         const b = branchLookup.get(o.branchId);

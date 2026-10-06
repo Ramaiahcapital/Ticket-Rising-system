@@ -98,7 +98,7 @@ function AuditTab() {
     if (!groupByMonth) return [["All orders", visible]];
     const acc = visible.reduce<Record<string, typeof visible>>((a, o) => {
       const key = o.orderDate ? String(o.orderDate).slice(0, 7) : "No date";
-      (acc[key] ||= []).push(o);
+      (a[key] ||= []).push(o);
       return a;
     }, {});
     return Object.entries(acc).sort((a, b) => b[0].localeCompare(a[0])) as Array<[string, typeof visible]>;
