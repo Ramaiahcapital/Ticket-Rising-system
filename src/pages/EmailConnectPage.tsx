@@ -1,4 +1,5 @@
 import GoogleConnect from "@/components/GoogleConnect";
+import EmailHealthPanel from "@/components/EmailHealthPanel";
 
 export default function EmailConnectPage() {
   return (
@@ -8,6 +9,7 @@ export default function EmailConnectPage() {
         <p className="text-sm text-gray-500 mt-1">Connect your Google account so emails are sent from your Gmail when you create tickets</p>
       </div>
       <GoogleConnect />
+      <EmailHealthPanel />
     </div>
   );
 }

@@ -1,5 +1,5 @@
 import { trpc } from "@/providers/trpc";
-import { Mail, CheckCircle2, Unlink, Loader2, ExternalLink } from "lucide-react";
+import { Mail, CheckCircle2, Unlink, Loader2, ExternalLink, AlertTriangle, RefreshCw } from "lucide-react";
 
 export default function GoogleConnect() {
   const utils = trpc.useUtils();
@@ -19,6 +19,16 @@ export default function GoogleConnect() {
     );
   }
 
+  const reconnectButton = (
+    <a
+      href={authUrl?.url || "#"}
+      className="inline-flex items-center gap-2 px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg transition-colors"
+    >
+      <RefreshCw className="w-4 h-4" />
+      Reconnect Google Account
+    </a>
+  );
+
   return (
     <div className="bg-white rounded-xl border border-gray-200 p-5 space-y-4">
       <div className="flex items-center gap-3">
@@ -33,29 +43,46 @@ export default function GoogleConnect() {
 
       {status?.connected ? (
         <div className="space-y-3">
-          <div className="flex items-center gap-2 p-3 bg-green-50 border border-green-200 rounded-lg">
-            <CheckCircle2 className="w-4 h-4 text-green-600 flex-shrink-0" />
-            <div>
-              <p className="text-sm font-medium text-green-800">Connected</p>
-              <p className="text-xs text-green-600">{status.email}</p>
+          {status.healthy ? (
+            <div className="flex items-center gap-2 p-3 bg-green-50 border border-green-200 rounded-lg">
+              <CheckCircle2 className="w-4 h-4 text-green-600 flex-shrink-0" />
+              <div>
+                <p className="text-sm font-medium text-green-800">Connected</p>
+                <p className="text-xs text-green-600">{status.email}</p>
+              </div>
             </div>
-          </div>
+          ) : (
+            <div className="flex items-start gap-2 p-3 bg-red-50 border border-red-200 rounded-lg">
+              <AlertTriangle className="w-4 h-4 text-red-600 flex-shrink-0 mt-0.5" />
+              <div>
+                <p className="text-sm font-medium text-red-800">Connection expired — emails are not sending</p>
+                <p className="text-xs text-red-600 mt-0.5">
+                  {status.reason || "Google has revoked this connection."} Please reconnect to resume sending emails.
+                </p>
+              </div>
+            </div>
+          )}
           <p className="text-xs text-gray-500">
-            Emails will be sent from this address when you create tickets, orders, or approve requests.
+            Emails will be sent from this address when you create tickets, orders, or approve requests. If this
+            connection is unavailable, the system sends them from a connected administrator mailbox instead.
           </p>
-          <button
-            onClick={() => { if (confirm("Disconnect your Google account? Emails will stop sending.")) disconnect.mutate(); }}
-            disabled={disconnect.isPending}
-            className="flex items-center gap-2 px-3 py-2 border border-red-300 text-red-600 text-sm rounded-lg hover:bg-red-50 transition-colors disabled:opacity-50"
-          >
-            {disconnect.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Unlink className="w-4 h-4" />}
-            Disconnect
-          </button>
+          <div className="flex items-center gap-2">
+            {!status.healthy && reconnectButton}
+            <button
+              onClick={() => { if (confirm("Disconnect your Google account? Emails will stop sending from your address.")) disconnect.mutate(); }}
+              disabled={disconnect.isPending}
+              className="flex items-center gap-2 px-3 py-2 border border-red-300 text-red-600 text-sm rounded-lg hover:bg-red-50 transition-colors disabled:opacity-50"
+            >
+              {disconnect.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Unlink className="w-4 h-4" />}
+              Disconnect
+            </button>
+          </div>
         </div>
       ) : (
         <div className="space-y-3">
           <p className="text-sm text-gray-600">
             Connect your Google account so that notifications are sent <strong>from your email address</strong> to the relevant recipients.
+            If you don't connect, notifications still go out from a connected administrator mailbox.
           </p>
           <a
             href={authUrl?.url || "#"}

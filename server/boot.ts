@@ -21,7 +21,7 @@ app.get("/api/google/callback", async (c) => {
   }
 
   try {
-    const { exchangeCodeForTokens, getGoogleEmail } = await import("./email-service.js");
+    const { exchangeCodeForTokens, getGoogleEmail, clearSystemSenderCache } = await import("./email-service.js");
     const { getSupabaseAdmin } = await import("./lib/supabase.js");
 
     const tokens = await exchangeCodeForTokens(code, c.req.raw);
@@ -46,6 +46,8 @@ app.get("/api/google/callback", async (c) => {
       },
       { onConflict: "userId" }
     );
+
+    clearSystemSenderCache();
 
     return c.redirect("/#/email-settings?google=connected");
   } catch (err) {
