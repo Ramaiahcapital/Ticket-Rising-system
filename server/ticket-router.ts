@@ -30,6 +30,9 @@ function getActorName(ctx: { user: TrpcContext["user"] }): string {
   if (ctx.user.type === "transfer") {
     return ctx.user.name || "Transfer User";
   }
+  if (ctx.user.type === "cluster") {
+    return ctx.user.name || "Cluster";
+  }
   return ctx.user.name || "Admin";
 }
 
@@ -74,24 +77,29 @@ export const ticketRouter = createRouter({
 
         // Transfer user promoted to middle admin also views their monitored department's tickets.
         const monitorRole = (ctx.user as any).monitorRole ?? null;
+        const ownedByMe = `createdBy.eq.${ctx.user.id}`;
 
         if (monitorRole && ticketIds.length === 0) {
-          query = query.eq("branchRole", monitorRole);
+          query = query.or(`branchRole.eq.${monitorRole},${ownedByMe}`);
           // Note: these are view-only (middle admin) — enforced by changeStatus/reply guards.
-        } else if (!monitorRole && ticketIds.length === 0) {
-          return { items: [], total: 0, page: params.page, limit: params.limit, totalPages: 0 };
         } else if (monitorRole) {
-          // Transferred tickets + monitored department tickets.
-          query = query.or(`id.in.(${ticketIds.join(",")}),branchRole.eq.${monitorRole}`);
+          // Transferred tickets + monitored department tickets + tickets they raised.
+          query = query.or(`id.in.(${ticketIds.join(",")}),branchRole.eq.${monitorRole},${ownedByMe}`);
+        } else if (ticketIds.length === 0) {
+          // No transfers and no monitor scope — only the tickets they raised.
+          query = query.eq("createdBy", ctx.user.id);
         } else {
-          query = query.in("id", ticketIds);
+          query = query.or(`id.in.(${ticketIds.join(",")}),${ownedByMe}`);
         }
       } else if (params.branchId) {
         query = query.eq("branchId", params.branchId);
       }
 
       const scope = getTicketScopeFilter(ctx.user);
-      if (scope) query = query.eq("branchRole", scope.branchRole);
+      if (scope) {
+        // Scoped admins see their department plus any tickets they raised themselves.
+        query = query.or(`branchRole.eq.${scope.branchRole},createdBy.eq.${ctx.user.id}`);
+      }
 
       if (params.search) {
         query = query.or(
@@ -260,7 +268,8 @@ export const ticketRouter = createRouter({
       if (!ticket) throw new Error("Ticket not found");
 
       let hasAccess = false;
-      if (ctx.user.type === "branch" && ticket.branchId === ctx.user.id) hasAccess = true;
+      if (ticket.createdBy === ctx.user.id) hasAccess = true;
+      else if (ctx.user.type === "branch" && ticket.branchId === ctx.user.id) hasAccess = true;
       else if (ctx.user.type === "admin" && canAdminAccessTicket(ctx.user, ticket.branchRole)) hasAccess = true;
       else if (ctx.user.type === "cluster") {
         const clusterId = (ctx.user as any).clusterId ?? null;
@@ -295,7 +304,8 @@ export const ticketRouter = createRouter({
       // Clusters can only act on tickets they raised themselves — branch tickets
       // are strictly view-only for them.
       let canAct = false;
-      if (ctx.user.type === "branch" && ticket.branchId === ctx.user.id) canAct = true;
+      if (ticket.createdBy === ctx.user.id) canAct = true;
+      else if (ctx.user.type === "branch" && ticket.branchId === ctx.user.id) canAct = true;
       else if (ctx.user.type === "admin" && canAdminAccessTicket(ctx.user, ticket.branchRole)) canAct = true;
       else if (ctx.user.type === "cluster") canAct = ticket.branchId === ctx.user.id;
       else if (ctx.user.type === "transfer") {
@@ -342,11 +352,8 @@ export const ticketRouter = createRouter({
     .mutation(async ({ ctx, input }) => {
       const supabase = getSupabaseAdmin();
 
-      if (ctx.user.type !== "branch" && ctx.user.type !== "cluster") {
-        // Allow sub-admins with canRaiseTicket flag
-        if (ctx.user.type !== "admin" || !ctx.user.canRaiseTicket) {
-          throw new Error("Only branch and cluster users can create tickets");
-        }
+      if (!ctx.user.canRaiseTicket) {
+        throw new Error("You do not have permission to raise tickets. Contact an administrator.");
       }
 
       if (input.branchRole) {

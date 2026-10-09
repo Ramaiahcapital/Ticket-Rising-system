@@ -366,4 +366,80 @@ export const adminUserRouter = createRouter({
         .maybeSingle();
       return { exists: !!data };
     }),
+
+  // Every user (any role) with their ticket-raising permission, for the
+  // super-admin Ticket Access page.
+  listTicketAccess: mainAdminQuery
+    .input(z.object({ search: z.string().optional() }).optional())
+    .query(async ({ input }) => {
+      const supabase = getSupabaseAdmin();
+      let query = supabase
+        .from("profiles")
+        .select("id, name, contactPerson, username, email, role, adminRole, monitorRole, branchName, branchCode, canRaiseTicket, isActive")
+        .order("role", { ascending: true })
+        .order("name", { ascending: true });
+
+      const search = input?.search?.trim();
+      if (search) {
+        query = query.or(
+          `name.ilike.%${search}%,contactPerson.ilike.%${search}%,email.ilike.%${search}%,username.ilike.%${search}%,branchName.ilike.%${search}%`
+        );
+      }
+
+      const { data, error } = await query;
+      if (error) throw new Error(error.message);
+
+      return ((data ?? []) as any[])
+        .map((u) => {
+          const role = u.role as "admin" | "branch" | "cluster" | "transfer";
+          const isMainAdmin = role === "admin" && !u.adminRole;
+          return {
+            id: u.id,
+            name: u.name || u.contactPerson || u.branchName || u.username || "Unnamed",
+            email: u.email as string | null,
+            username: u.username as string | null,
+            role,
+            /** Department bucket for admins, or monitored role for transfer users. */
+            scope: role === "admin" ? (u.adminRole as string | null) : role === "transfer" ? (u.monitorRole as string | null) : (u.branchName as string | null),
+            isMainAdmin,
+            isActive: !!u.isActive,
+            canRaiseTicket: !!u.canRaiseTicket,
+          };
+        });
+    }),
+
+  // Super-admin toggle: enable/disable ticket raising for any user.
+  setTicketAccess: mainAdminQuery
+    .input(z.object({ id: z.string(), canRaiseTicket: z.boolean() }))
+    .mutation(async ({ ctx, input }) => {
+      const supabase = getSupabaseAdmin();
+      const { data: target } = await supabase
+        .from("profiles")
+        .select("id, name, contactPerson, branchName, role, canRaiseTicket")
+        .eq("id", input.id)
+        .maybeSingle();
+      if (!target) throw new Error("User not found");
+
+      const { error } = await supabase
+        .from("profiles")
+        .update({ canRaiseTicket: input.canRaiseTicket })
+        .eq("id", input.id);
+      if (error) throw new Error(error.message);
+
+      await createAuditLog({
+        userId: ctx.user.id,
+        userType: "admin",
+        userName: ctx.user.name || "Admin",
+        action: "set_ticket_access",
+        entityType: "profile",
+        entityId: input.id,
+        details: {
+          target: target.name || target.contactPerson || target.branchName || input.id,
+          role: target.role,
+          canRaiseTicket: input.canRaiseTicket,
+        },
+      });
+
+      return { success: true, canRaiseTicket: input.canRaiseTicket };
+    }),
 });

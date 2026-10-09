@@ -306,6 +306,8 @@ export type UnifiedUser =
       clusterId: string | null;
       email: string;
       username: string;
+      /** When true, this user is allowed to raise tickets. */
+      canRaiseTicket: boolean;
     }
   | {
       type: "cluster";
@@ -315,6 +317,8 @@ export type UnifiedUser =
       role: "cluster";
       clusterId: string | null;
       clusterName: string | null;
+      /** When true, this user is allowed to raise tickets. */
+      canRaiseTicket: boolean;
     }
   | {
       type: "transfer";
@@ -325,6 +329,8 @@ export type UnifiedUser =
       stationaryAccess: boolean;
       /** Department to monitor (view-only) as a middle admin. NULL = none. */
       monitorRole: BranchRole | null;
+      /** When true, this user is allowed to raise tickets. */
+      canRaiseTicket: boolean;
     };
 
 export function mapProfileToUnifiedUser(p: Profile): UnifiedUser {
@@ -349,6 +355,7 @@ export function mapProfileToUnifiedUser(p: Profile): UnifiedUser {
       role: "cluster",
       clusterId: p.clusterId,
       clusterName: p.name,
+      canRaiseTicket: !!p.canRaiseTicket,
     };
   }
   if (p.role === "transfer") {
@@ -360,6 +367,7 @@ export function mapProfileToUnifiedUser(p: Profile): UnifiedUser {
       role: "transfer",
       stationaryAccess: !!(p as any).stationaryAccess,
       monitorRole: (p as any).monitorRole ?? null,
+      canRaiseTicket: !!p.canRaiseTicket,
     };
   }
   return {
@@ -374,6 +382,7 @@ export function mapProfileToUnifiedUser(p: Profile): UnifiedUser {
     clusterId: p.clusterId,
     email: p.email || "",
     username: p.email || p.branchCode || "",
+    canRaiseTicket: !!p.canRaiseTicket,
   };
 }
 

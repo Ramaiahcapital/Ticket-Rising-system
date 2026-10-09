@@ -47,7 +47,7 @@ export default function CreateTicket() {
     }
   }, [activeRoles]);
 
-  const canRaise = (user as any)?.type === "branch" || (user as any)?.type === "cluster" || ((user as any)?.type === "admin" && !!(user as any)?.canRaiseTicket);
+  const canRaise = !!(user as any)?.canRaiseTicket;
 
   const { data: formConfig } = trpc.ticket.getFormConfig.useQuery(
     { role: selectedRole || undefined },

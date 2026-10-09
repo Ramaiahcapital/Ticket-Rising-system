@@ -7,6 +7,7 @@ import { ChangePasswordDialog } from "@/components/ChangePasswordDialog";
 import {
   LayoutDashboard,
   Ticket,
+  TicketCheck,
   Users,
   Settings,
   ClipboardList,
@@ -56,6 +57,7 @@ const transferNavBase: NavItem[] = [
 ];
 const transferMonitorItem: NavItem = { label: "Monitor", icon: Eye, path: "/monitor" };
 const transferStationaryItem: NavItem = { label: "Stationary", icon: Package, path: "/stationary/admin" };
+const transferCreateTicketItem: NavItem = { label: "Create Ticket", icon: Ticket, path: "/tickets/new" };
 
 const stationaryAdminNavItems: NavItem[] = [
   { label: "Stationary", icon: Package, path: "/stationary/admin" },
@@ -172,6 +174,11 @@ export default function Sidebar({ isAdmin, mobile, onClose }: SidebarProps) {
                 <ClipboardList className={`w-5 h-5 ${location.pathname === "/audit-log" ? "text-red-600" : "text-gray-400"}`} /> Audit Log
               </button>
             )}
+            {isMainAdmin && (
+              <button onClick={() => go("/ticket-access")} className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all ${location.pathname === "/ticket-access" ? "bg-red-50 text-red-600 border-l-[3px] border-red-600" : "text-gray-600 hover:bg-gray-50 hover:text-gray-900"}`}>
+                <TicketCheck className={`w-5 h-5 ${location.pathname === "/ticket-access" ? "text-red-600" : "text-gray-400"}`} /> Ticket Access
+              </button>
+            )}
             <button onClick={() => go("/reports")} className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all ${location.pathname === "/reports" ? "bg-red-50 text-red-600 border-l-[3px] border-red-600" : "text-gray-600 hover:bg-gray-50 hover:text-gray-900"}`}>
               <BarChart3 className={`w-5 h-5 ${location.pathname === "/reports" ? "text-red-600" : "text-gray-400"}`} /> Reports
             </button>
@@ -228,7 +235,7 @@ export default function Sidebar({ isAdmin, mobile, onClose }: SidebarProps) {
             )}
           </>
         ) : isCluster ? (
-          clusterNavItems.map((item) => {
+          clusterNavItems.filter((i) => i.path !== "/tickets/new" || canRaiseTicket).map((item) => {
             const isActive = location.pathname === item.path;
             return (
               <button
@@ -248,12 +255,11 @@ export default function Sidebar({ isAdmin, mobile, onClose }: SidebarProps) {
         ) : isTransfer ? (
           (() => {
             const monitorRole = (user as any)?.monitorRole;
-            let transferNavItems = hasStationaryAccess
-              ? [...transferNavBase, transferStationaryItem]
-              : [...transferNavBase];
+            let transferNavItems = [...transferNavBase];
+            if (canRaiseTicket) transferNavItems.splice(1, 0, transferCreateTicketItem);
+            if (hasStationaryAccess) transferNavItems.push(transferStationaryItem);
             if (monitorRole) {
-              const monitorIdx = transferNavItems.findIndex((i) => i.path === "/monitor");
-              if (monitorIdx === -1) transferNavItems.unshift(transferMonitorItem);
+              transferNavItems.unshift(transferMonitorItem);
             }
             return transferNavItems.map((item) => {
             const isActive = location.pathname === item.path;
@@ -274,7 +280,7 @@ export default function Sidebar({ isAdmin, mobile, onClose }: SidebarProps) {
           });
           })()
         ) : (
-          branchNavItems.map((item) => {
+          branchNavItems.filter((i) => i.path !== "/tickets/new" || canRaiseTicket).map((item) => {
             const isActive = location.pathname === item.path;
             return (
               <button

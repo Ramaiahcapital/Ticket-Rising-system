@@ -27,6 +27,8 @@ export type UnifiedUser =
       clusterId: string | null;
       email: string;
       username: string;
+      /** When true, this user is allowed to raise tickets. */
+      canRaiseTicket: boolean;
     }
   | {
       type: "cluster";
@@ -36,6 +38,8 @@ export type UnifiedUser =
       role: "cluster";
       clusterId: string | null;
       clusterName: string | null;
+      /** When true, this user is allowed to raise tickets. */
+      canRaiseTicket: boolean;
     }
   | {
       type: "transfer";
@@ -45,6 +49,8 @@ export type UnifiedUser =
       role: "transfer";
       stationaryAccess: boolean;
       monitorRole: string | null;
+      /** When true, this user is allowed to raise tickets. */
+      canRaiseTicket: boolean;
     };
 
 export function useAuth() {
@@ -82,8 +88,8 @@ export function useAuth() {
       isAdmin: user?.type === "admin",
       /** Main admin (no sub-admin bucket) — has access to all admin features. */
       isMainAdmin: user?.type === "admin" && !user.adminRole,
-      /** Sub-admin with permission to raise tickets. */
-      canRaiseTicket: user?.type === "admin" && !!user.canRaiseTicket,
+      /** Whether this user is allowed to raise tickets (any role). */
+      canRaiseTicket: !!(user as UnifiedUser | null)?.canRaiseTicket,
       /** Sub-admin department bucket, or null for main admins / non-admins. */
       adminRole: user?.type === "admin" ? user.adminRole : null,
       isBranch: user?.type === "branch",

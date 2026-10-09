@@ -26,6 +26,7 @@ import TicketFormConfig from "@/pages/TicketFormConfig";
 import RolesManagement from "@/pages/RolesManagement";
 import EmailConnectPage from "@/pages/EmailConnectPage";
 import AdminUsersPage from "@/pages/AdminUsersPage";
+import TicketAccess from "@/pages/TicketAccess";
 import TransferUsersPage from "@/pages/TransferUsersPage";
 import TransferAccept from "@/pages/TransferAccept";
 import MonitorDashboard from "@/pages/MonitorDashboard";
@@ -36,12 +37,14 @@ function ProtectedRoute({
   requireAdmin = false,
   requireMainAdmin = false,
   requireStationaryAdmin = false,
+  requireCanRaise = false,
   blockTransfer = false,
 }: {
   children: React.ReactNode;
   requireAdmin?: boolean;
   requireMainAdmin?: boolean;
   requireStationaryAdmin?: boolean;
+  requireCanRaise?: boolean;
   blockTransfer?: boolean;
 }) {
   const { user, isLoading } = useAuth();
@@ -67,6 +70,8 @@ function ProtectedRoute({
     const isStationaryAdminUser = user.type === "admin" && (user as any).adminRole === "Stationary Admin";
     const isTransferWithAccess = user.type === "transfer" && (user as any).stationaryAccess;
     if (!isMainAdminUser && !isStationaryAdminUser && !isTransferWithAccess) return <Navigate to="/" replace />;
+  } else if (requireCanRaise) {
+    if (!(user as any).canRaiseTicket) return <Navigate to="/" replace />;
   } else if (requireMainAdmin) {
     if (user.type !== "admin" || user.adminRole) {
       return <Navigate to="/" replace />;
@@ -96,7 +101,7 @@ export default function App() {
       <Route
         path="/tickets/new"
         element={
-          <ProtectedRoute blockTransfer>
+          <ProtectedRoute requireCanRaise>
             <CreateTicket />
           </ProtectedRoute>
         }
@@ -138,6 +143,14 @@ export default function App() {
         element={
           <ProtectedRoute requireMainAdmin>
             <AuditLogPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/ticket-access"
+        element={
+          <ProtectedRoute requireMainAdmin>
+            <TicketAccess />
           </ProtectedRoute>
         }
       />
