@@ -6,7 +6,7 @@ import { useBranchRoles } from "@/hooks/useBranchRoles";
 export default function TransferUsersPage() {
   const [showModal, setShowModal] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [form, setForm] = useState({ name: "", email: "", password: "", stationaryAccess: false });
+  const [form, setForm] = useState({ name: "", email: "", password: "", stationaryAccess: false, isActive: true });
   const [formError, setFormError] = useState("");
   const [search, setSearch] = useState("");
   const [resetPasswordId, setResetPasswordId] = useState<string | null>(null);
@@ -46,14 +46,14 @@ export default function TransferUsersPage() {
   });
 
   const reset = () => {
-    setForm({ name: "", email: "", password: "", stationaryAccess: false });
+    setForm({ name: "", email: "", password: "", stationaryAccess: false, isActive: true });
     setEditingId(null);
     setShowModal(false);
     setFormError("");
   };
 
-  const openEdit = (u: { id: string; name: string | null; email: string | null; stationaryAccess: boolean }) => {
-    setForm({ name: u.name || "", email: u.email || "", password: "", stationaryAccess: u.stationaryAccess });
+  const openEdit = (u: { id: string; name: string | null; email: string | null; stationaryAccess: boolean; isActive: boolean | null }) => {
+    setForm({ name: u.name || "", email: u.email || "", password: "", stationaryAccess: u.stationaryAccess, isActive: !!u.isActive });
     setEditingId(u.id);
     setShowModal(true);
   };
@@ -68,6 +68,7 @@ export default function TransferUsersPage() {
         name: form.name,
         email: form.email,
         stationaryAccess: form.stationaryAccess,
+        isActive: form.isActive,
       });
     } else {
       if (!form.password || form.password.length < 6) { setFormError("Password must be at least 6 characters"); return; }
@@ -76,6 +77,7 @@ export default function TransferUsersPage() {
         email: form.email,
         password: form.password,
         stationaryAccess: form.stationaryAccess,
+        isActive: form.isActive,
       });
     }
   };
@@ -205,15 +207,30 @@ export default function TransferUsersPage() {
                     <td className="py-3 px-4 text-sm text-gray-500">
                       {u.lastLoginAt ? new Date(u.lastLoginAt).toLocaleDateString() : "Never"}
                     </td>
-                    <td className="py-3 px-4 text-right">
-                      <div className="flex items-center justify-end gap-1">
+                    <td className="py-3 px-4">
+                      <div className="flex items-center justify-end gap-2">
                         <button
                           onClick={() => toggleStatus.mutate({ id: u.id })}
-                          className="p-1.5 hover:bg-gray-100 rounded-lg transition-colors"
-                          title={u.isActive ? "Deactivate" : "Activate"}
                           disabled={toggleStatus.isPending}
+                          className={`inline-flex items-center gap-1 rounded-lg border px-2.5 py-1 text-xs font-medium transition-colors disabled:opacity-50 ${
+                            u.isActive
+                              ? "border-amber-200 bg-amber-50 text-amber-700 hover:bg-amber-100"
+                              : "border-green-200 bg-green-50 text-green-700 hover:bg-green-100"
+                          }`}
+                          title={u.isActive ? "Deactivate this user" : "Activate this user"}
                         >
-                          {u.isActive ? <ToggleRight className="w-4 h-4 text-green-500" /> : <ToggleLeft className="w-4 h-4 text-gray-400" />}
+                          {u.isActive ? <ToggleRight className="w-4 h-4" /> : <ToggleLeft className="w-4 h-4" />}
+                          {u.isActive ? "Deactivate" : "Activate"}
+                        </button>
+                        <button
+                          onClick={() => {
+                            setResetPasswordId(u.id);
+                            setNewPassword(null);
+                          }}
+                          className="inline-flex items-center gap-1 rounded-lg border border-gray-200 bg-white px-2.5 py-1 text-xs font-medium text-gray-700 hover:bg-amber-50 hover:border-amber-200 hover:text-amber-700 transition-colors"
+                          title="Reset Password"
+                        >
+                          <KeyRound className="w-4 h-4" /> Reset
                         </button>
                         <button
                           onClick={() => openEdit(u)}
@@ -221,16 +238,6 @@ export default function TransferUsersPage() {
                           title="Edit"
                         >
                           <Pencil className="w-4 h-4 text-gray-500" />
-                        </button>
-                        <button
-                          onClick={() => {
-                            setResetPasswordId(u.id);
-                            setNewPassword(null);
-                          }}
-                          className="p-1.5 hover:bg-amber-50 rounded-lg transition-colors"
-                          title="Reset Password"
-                        >
-                          <KeyRound className="w-4 h-4 text-amber-500" />
                         </button>
                         <button
                           onClick={() => {
@@ -313,6 +320,28 @@ export default function TransferUsersPage() {
                   Stationary Portal Access
                 </label>
               </div>
+              <div className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg border border-gray-200">
+                <input
+                  type="checkbox"
+                  id="isActive"
+                  checked={form.isActive}
+                  onChange={(e) => setForm({ ...form, isActive: e.target.checked })}
+                  className="w-4 h-4 text-purple-600 rounded border-gray-300"
+                />
+                <label htmlFor="isActive" className="flex items-center gap-2 text-sm text-gray-700">
+                  <ToggleRight className="w-4 h-4 text-purple-500" />
+                  Account active (can log in)
+                </label>
+              </div>
+              {editingId && (
+                <button
+                  type="button"
+                  onClick={() => { setShowModal(false); setResetPasswordId(editingId); setNewPassword(null); }}
+                  className="w-full flex items-center justify-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm font-medium text-amber-700 hover:bg-amber-100 transition-colors"
+                >
+                  <KeyRound className="w-4 h-4" /> Reset Password
+                </button>
+              )}
               <div className="flex justify-end gap-3 pt-2">
                 <button
                   type="button"
