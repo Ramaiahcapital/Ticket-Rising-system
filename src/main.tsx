@@ -4,6 +4,7 @@ import { HashRouter } from 'react-router'
 import './index.css'
 import { TRPCProvider } from "@/providers/trpc"
 import { RealtimeProvider } from "@/components/RealtimeProvider"
+import ErrorBoundary from "@/components/ErrorBoundary"
 import App from './App.tsx'
 
 // When the page is restored from the browser's back/forward cache (bfcache),
@@ -19,12 +20,14 @@ if ('pageshow' in window) {
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    <HashRouter>
-      <TRPCProvider>
-        <RealtimeProvider>
-          <App />
-        </RealtimeProvider>
-      </TRPCProvider>
-    </HashRouter>
+    <ErrorBoundary>
+      <HashRouter>
+        <TRPCProvider>
+          <RealtimeProvider>
+            <App />
+          </RealtimeProvider>
+        </TRPCProvider>
+      </HashRouter>
+    </ErrorBoundary>
   </StrictMode>,
 )

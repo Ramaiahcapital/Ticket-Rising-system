@@ -3,6 +3,7 @@ import { useLocation } from "react-router";
 import { useAuth } from "@/hooks/useAuth";
 import Sidebar from "./Sidebar";
 import Header from "./Header";
+import EmailConnectionBanner from "./EmailConnectionBanner";
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -49,6 +50,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
         />
         <main className="flex-1 p-4 lg:p-6 overflow-auto">
           <div className="max-w-7xl mx-auto">
+            <EmailConnectionBanner />
             {children}
           </div>
         </main>
