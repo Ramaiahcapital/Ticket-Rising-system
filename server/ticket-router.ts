@@ -18,6 +18,7 @@ import {
   recordEmailError,
   recordEmailFailure,
   sendEmailTally,
+  portalButton,
 } from "./lib/utils.js";
 import { sendEmailFromUser } from "./email-service.js";
 import type { TrpcContext } from "./context.js";
@@ -476,6 +477,7 @@ export const ticketRouter = createRouter({
                       <tr><td style="padding:8px;font-weight:bold;border-bottom:1px solid #eee;">Department</td><td style="padding:8px;border-bottom:1px solid #eee;">${input.department || "Not specified"}</td></tr>
                       <tr><td style="padding:8px;font-weight:bold;border-bottom:1px solid #eee;">Description</td><td style="padding:8px;border-bottom:1px solid #eee;">${input.description}</td></tr>
                     </table>
+                    ${portalButton()}
                     <p style="margin-top:16px;color:#666;">This ticket was raised from the Ramaiah Capital Ticket Management System.</p>
                   </div>`
               );
@@ -968,11 +970,13 @@ export const ticketRouter = createRouter({
         .maybeSingle();
       if (!branchProfile?.email) throw new Error("Branch user email not found");
 
-      const actorName = getActorName(ctx);
       const htmlBody = `<div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;">
         <h2 style="color:#DC2626;">Update on your ticket ${ticket.ticketNumber}</h2>
-        <p>A reply has been posted on your ticket <strong>${ticket.ticketNumber} — ${ticket.subject}</strong> by ${actorName}.</p>
-        <p>Please log in to the Ticket Management System to view the latest reply.</p>
+        <table style="width:100%;border-collapse:collapse;">
+          <tr><td style="padding:8px;font-weight:bold;border-bottom:1px solid #eee;">Ticket</td><td style="padding:8px;border-bottom:1px solid #eee;">${ticket.ticketNumber} — ${ticket.subject}</td></tr>
+        </table>
+        ${portalButton()}
+        <p style="margin-top:16px;color:#666;">Please open the portal to view the latest update on your ticket.</p>
         <p style="margin-top:16px;color:#666;">Ramaiah Capital Ticket Management System</p>
       </div>`;
 

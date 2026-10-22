@@ -881233,6 +881233,10 @@ init_supabase();
 // server/lib/utils.ts
 init_supabase();
 init_email_service();
+var PORTAL_URL = "https://rcpl-ticket.vercel.app/";
+function portalButton(label = "Open Portal") {
+  return `<a href="${PORTAL_URL}" style="display:inline-block;margin:16px 0;padding:12px 24px;background:#DC2626;color:#fff;text-decoration:none;border-radius:6px;font-weight:bold;">${label}</a>`;
+}
 async function generateTicketNumber() {
   const supabase = getSupabaseAdmin();
   const { data: formatRows } = await supabase.from("system_settings").select("value").eq("key", "ticket_number_format").maybeSingle();
@@ -882661,6 +882665,7 @@ var clusterRouter = createRouter({
                     <tr><td style="padding:8px;font-weight:bold;border-bottom:1px solid #eee;">Approved By</td><td style="padding:8px;border-bottom:1px solid #eee;">${user.name || "Cluster Admin"}</td></tr>
                     <tr><td style="padding:8px;font-weight:bold;border-bottom:1px solid #eee;">Approved At</td><td style="padding:8px;border-bottom:1px solid #eee;">${(/* @__PURE__ */ new Date()).toLocaleString()}</td></tr>
                   </table>
+                  ${portalButton()}
                   <p style="margin-top:16px;color:#666;">The stationary order has been approved by the cluster and is ready for processing.</p>
                 </div>`
             );
@@ -883090,6 +883095,7 @@ var ticketRouter = createRouter({
                       <tr><td style="padding:8px;font-weight:bold;border-bottom:1px solid #eee;">Department</td><td style="padding:8px;border-bottom:1px solid #eee;">${input.department || "Not specified"}</td></tr>
                       <tr><td style="padding:8px;font-weight:bold;border-bottom:1px solid #eee;">Description</td><td style="padding:8px;border-bottom:1px solid #eee;">${input.description}</td></tr>
                     </table>
+                    ${portalButton()}
                     <p style="margin-top:16px;color:#666;">This ticket was raised from the Ramaiah Capital Ticket Management System.</p>
                   </div>`
             );
@@ -883466,11 +883472,13 @@ var ticketRouter = createRouter({
     if (!hasAccess) throw new Error("Access denied");
     const { data: branchProfile } = await supabase.from("profiles").select("email, branchName").eq("id", ticket.branchId).maybeSingle();
     if (!branchProfile?.email) throw new Error("Branch user email not found");
-    const actorName = getActorName(ctx);
     const htmlBody = `<div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;">
         <h2 style="color:#DC2626;">Update on your ticket ${ticket.ticketNumber}</h2>
-        <p>A reply has been posted on your ticket <strong>${ticket.ticketNumber} \u2014 ${ticket.subject}</strong> by ${actorName}.</p>
-        <p>Please log in to the Ticket Management System to view the latest reply.</p>
+        <table style="width:100%;border-collapse:collapse;">
+          <tr><td style="padding:8px;font-weight:bold;border-bottom:1px solid #eee;">Ticket</td><td style="padding:8px;border-bottom:1px solid #eee;">${ticket.ticketNumber} \u2014 ${ticket.subject}</td></tr>
+        </table>
+        ${portalButton()}
+        <p style="margin-top:16px;color:#666;">Please open the portal to view the latest update on your ticket.</p>
         <p style="margin-top:16px;color:#666;">Ramaiah Capital Ticket Management System</p>
       </div>`;
     let emailSent = false;
@@ -883730,6 +883738,7 @@ var ticketCommentRouter = createRouter({
             <tr><td style="padding:8px;font-weight:bold;border-bottom:1px solid #eee;">From</td><td style="padding:8px;border-bottom:1px solid #eee;">${from}</td></tr>
             <tr><td style="padding:8px;font-weight:bold;border-bottom:1px solid #eee;">Reply</td><td style="padding:8px;border-bottom:1px solid #eee;">${plainText.replace(/\n/g, "<br/>")}</td></tr>
           </table>
+          ${portalButton()}
           <p style="margin-top:16px;color:#666;">Ramaiah Capital Ticket Management System</p>
         </div>`;
     if (ctx.user.type === "branch" || ctx.user.type === "transfer") {
@@ -884620,6 +884629,7 @@ async function resubmitForClusterApproval(supabase, ctx, orderId, clusterId) {
                 <tbody>${itemList}</tbody>
               </table>
               <p style="margin-top:12px;font-weight:bold;">Grand Total: \u20B9${grandTotal}</p>
+              ${portalButton()}
               <p style="margin-top:16px;color:#666;">A branch modified this order. Please review and approve it in the Ramaiah Capital Stationary Portal.</p>
             </div>`
           );
@@ -884912,6 +884922,7 @@ var stationaryRouter = createRouter({
                       <thead><tr style="background:#f9fafb;"><th style="padding:6px 8px;text-align:left;border-bottom:2px solid #ddd;">Item</th><th style="padding:6px 8px;text-align:center;border-bottom:2px solid #ddd;">Qty</th></tr></thead>
                       <tbody>${itemList}</tbody>
                     </table>
+                    ${portalButton()}
                     <p style="margin-top:16px;color:#666;">Please review and approve this order in the Ramaiah Capital Stationary Portal.</p>
                   </div>`
             );
@@ -884948,6 +884959,7 @@ var stationaryRouter = createRouter({
                       <thead><tr style="background:#f9fafb;"><th style="padding:6px 8px;text-align:left;border-bottom:2px solid #ddd;">Item</th><th style="padding:6px 8px;text-align:center;border-bottom:2px solid #ddd;">Qty</th></tr></thead>
                       <tbody>${itemList}</tbody>
                     </table>
+                    ${portalButton()}
                     <p style="margin-top:16px;color:#666;">Please review and approve this order in the Ramaiah Capital Stationary Portal.</p>
                   </div>`
             );
@@ -885055,6 +885067,7 @@ var stationaryRouter = createRouter({
                     <tbody>${itemList}</tbody>
                   </table>
                   <p style="margin-top:12px;font-weight:bold;">Grand Total: \u20B9${grandTotal}</p>
+                  ${portalButton()}
                   <p style="margin-top:16px;color:#666;">The branch has confirmed receipt of this stationary order.</p>
                 </div>`
             );

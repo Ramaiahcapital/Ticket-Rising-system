@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { createRouter, authedQuery, stationaryAdminQuery } from "./middleware.js";
 import { getSupabaseAdmin } from "./lib/supabase.js";
-import { createAuditLog, notifyAllAdmins, notifyBranchUsers, notifyClusterUsers, requireRoleExists, recordEmailError, recordEmailFailure, sendEmailTally } from "./lib/utils.js";
+import { createAuditLog, notifyAllAdmins, notifyBranchUsers, notifyClusterUsers, requireRoleExists, recordEmailError, recordEmailFailure, sendEmailTally, portalButton } from "./lib/utils.js";
 import type { BranchRole } from "./lib/db-types.js";
 import { sendEmailFromUserResult } from "./email-service.js";
 
@@ -94,6 +94,7 @@ async function resubmitForClusterApproval(
                 <tbody>${itemList}</tbody>
               </table>
               <p style="margin-top:12px;font-weight:bold;">Grand Total: ₹${grandTotal}</p>
+              ${portalButton()}
               <p style="margin-top:16px;color:#666;">A branch modified this order. Please review and approve it in the Ramaiah Capital Stationary Portal.</p>
             </div>`
           );
@@ -487,6 +488,7 @@ export const stationaryRouter = createRouter({
                       <thead><tr style="background:#f9fafb;"><th style="padding:6px 8px;text-align:left;border-bottom:2px solid #ddd;">Item</th><th style="padding:6px 8px;text-align:center;border-bottom:2px solid #ddd;">Qty</th></tr></thead>
                       <tbody>${itemList}</tbody>
                     </table>
+                    ${portalButton()}
                     <p style="margin-top:16px;color:#666;">Please review and approve this order in the Ramaiah Capital Stationary Portal.</p>
                   </div>`
               );
@@ -532,6 +534,7 @@ export const stationaryRouter = createRouter({
                       <thead><tr style="background:#f9fafb;"><th style="padding:6px 8px;text-align:left;border-bottom:2px solid #ddd;">Item</th><th style="padding:6px 8px;text-align:center;border-bottom:2px solid #ddd;">Qty</th></tr></thead>
                       <tbody>${itemList}</tbody>
                     </table>
+                    ${portalButton()}
                     <p style="margin-top:16px;color:#666;">Please review and approve this order in the Ramaiah Capital Stationary Portal.</p>
                   </div>`
               );
@@ -670,6 +673,7 @@ export const stationaryRouter = createRouter({
                     <tbody>${itemList}</tbody>
                   </table>
                   <p style="margin-top:12px;font-weight:bold;">Grand Total: ₹${grandTotal}</p>
+                  ${portalButton()}
                   <p style="margin-top:16px;color:#666;">The branch has confirmed receipt of this stationary order.</p>
                 </div>`
               );

@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { createRouter, adminQuery, authedQuery, clusterQuery } from "./middleware.js";
 import { getSupabaseAdmin } from "./lib/supabase.js";
-import { createAuditLog, notifyAllAdmins, notifyBranchUsers } from "./lib/utils.js";
+import { createAuditLog, notifyAllAdmins, notifyBranchUsers, portalButton } from "./lib/utils.js";
 import type { ClusterRow, Profile } from "./lib/db-types.js";
 import { env } from "./lib/env.js";
 import { sendEmailFromUserResult } from "./email-service.js";
@@ -590,6 +590,7 @@ export const clusterRouter = createRouter({
                     <tr><td style="padding:8px;font-weight:bold;border-bottom:1px solid #eee;">Approved By</td><td style="padding:8px;border-bottom:1px solid #eee;">${user.name || "Cluster Admin"}</td></tr>
                     <tr><td style="padding:8px;font-weight:bold;border-bottom:1px solid #eee;">Approved At</td><td style="padding:8px;border-bottom:1px solid #eee;">${new Date().toLocaleString()}</td></tr>
                   </table>
+                  ${portalButton()}
                   <p style="margin-top:16px;color:#666;">The stationary order has been approved by the cluster and is ready for processing.</p>
                 </div>`
               );

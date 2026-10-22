@@ -9,6 +9,14 @@ import type {
   UnifiedUser,
 } from "./db-types.js";
 
+/** Public portal link included in every notification email. */
+export const PORTAL_URL = "https://rcpl-ticket.vercel.app/";
+
+/** "Open Portal" call-to-action button for email bodies. */
+export function portalButton(label = "Open Portal"): string {
+  return `<a href="${PORTAL_URL}" style="display:inline-block;margin:16px 0;padding:12px 24px;background:#DC2626;color:#fff;text-decoration:none;border-radius:6px;font-weight:bold;">${label}</a>`;
+}
+
 // Generate next ticket number based on format setting
 export async function generateTicketNumber(): Promise<string> {
   const supabase = getSupabaseAdmin();

@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { createRouter, authedQuery } from "./middleware.js";
 import { getSupabaseAdmin } from "./lib/supabase.js";
-import { createTimelineEntry, createNotification, canAdminAccessTicket, notifyRoleAdmins, hasTransferAccess, getUserEmail } from "./lib/utils.js";
+import { createTimelineEntry, createNotification, canAdminAccessTicket, notifyRoleAdmins, hasTransferAccess, getUserEmail, portalButton } from "./lib/utils.js";
 import { sendEmailFromUser } from "./email-service.js";
 
 function sanitizeHtml(html: string): string {
@@ -175,6 +175,7 @@ export const ticketCommentRouter = createRouter({
             <tr><td style="padding:8px;font-weight:bold;border-bottom:1px solid #eee;">From</td><td style="padding:8px;border-bottom:1px solid #eee;">${from}</td></tr>
             <tr><td style="padding:8px;font-weight:bold;border-bottom:1px solid #eee;">Reply</td><td style="padding:8px;border-bottom:1px solid #eee;">${plainText.replace(/\n/g, "<br/>")}</td></tr>
           </table>
+          ${portalButton()}
           <p style="margin-top:16px;color:#666;">Ramaiah Capital Ticket Management System</p>
         </div>`;
 
