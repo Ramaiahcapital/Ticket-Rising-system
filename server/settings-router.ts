@@ -1,7 +1,11 @@
 import { z } from "zod";
-import { createRouter, publicQuery, adminQuery } from "./middleware.js";
+import { createRouter, publicQuery, adminQuery, mainAdminQuery } from "./middleware.js";
 import { getSupabaseAdmin } from "./lib/supabase.js";
 import { createAuditLog } from "./lib/utils.js";
+import {
+  getTicketNotificationSettings,
+  saveTicketNotificationSettings,
+} from "./lib/ticket-notifications.js";
 
 export const settingsRouter = createRouter({
   list: publicQuery.query(async () => {
@@ -75,4 +79,38 @@ export const settingsRouter = createRouter({
 
     return { preview, format };
   }),
+
+  /** Who receives an email when a new ticket is created. */
+  getTicketNotifications: mainAdminQuery.query(async () => {
+    return getTicketNotificationSettings();
+  }),
+
+  updateTicketNotifications: mainAdminQuery
+    .input(
+      z.object({
+        enabled: z.boolean(),
+        mode: z.enum(["department", "all", "custom"]),
+        customRecipients: z.array(z.string()).default([]),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      const settings = await saveTicketNotificationSettings(
+        {
+          enabled: input.enabled,
+          mode: input.mode,
+          customRecipients: input.customRecipients,
+        },
+        ctx.user.id
+      );
+
+      await createAuditLog({
+        userId: ctx.user.id,
+        userType: "admin",
+        action: "update_ticket_notifications",
+        entityType: "systemSettings",
+        details: { ...settings },
+      });
+
+      return { success: true, settings };
+    }),
 });

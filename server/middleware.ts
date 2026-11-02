@@ -2,6 +2,7 @@ import { ErrorMessages } from "../contracts/constants.js";
 import { initTRPC, TRPCError } from "@trpc/server";
 import superjson from "superjson";
 import type { TrpcContext } from "./context.js";
+import type { PermissionKey } from "./lib/permissions.js";
 
 const t = initTRPC.context<TrpcContext>().create({
   transformer: superjson,
@@ -43,17 +44,39 @@ export const adminQuery = authedQuery.use(requireRole("admin"));
 export const clusterQuery = authedQuery.use(requireRole("cluster"));
 export const transferQuery = authedQuery.use(requireRole("transfer"));
 
-// Admin OR transfer user with stationary portal access.
-const requireStationaryAccess = t.middleware(async (opts) => {
-  const { ctx, next } = opts;
-  if (!ctx.user) throw new TRPCError({ code: "UNAUTHORIZED", message: ErrorMessages.unauthenticated });
-  if (ctx.user.role === "admin") return next({ ctx: { ...ctx, user: ctx.user } });
-  if (ctx.user.role === "transfer" && (ctx.user as any).stationaryAccess) {
+/**
+ * Require at least one of the given feature permissions. Permissions are
+ * resolved per-request from role defaults + the user_permissions overrides.
+ */
+export function requirePermission(...keys: PermissionKey[]) {
+  return t.middleware(async (opts) => {
+    const { ctx, next } = opts;
+
+    if (!ctx.user) {
+      throw new TRPCError({
+        code: "UNAUTHORIZED",
+        message: ErrorMessages.unauthenticated,
+      });
+    }
+
+    const allowed = keys.some((key) => !!ctx.permissions?.[key]);
+    if (!allowed) {
+      throw new TRPCError({
+        code: "FORBIDDEN",
+        message: ErrorMessages.insufficientRole,
+      });
+    }
+
     return next({ ctx: { ...ctx, user: ctx.user } });
-  }
-  throw new TRPCError({ code: "FORBIDDEN", message: ErrorMessages.insufficientRole });
-});
-export const stationaryAdminQuery = authedQuery.use(requireStationaryAccess);
+  });
+}
+
+export const permissionQuery = (...keys: PermissionKey[]) =>
+  authedQuery.use(requirePermission(...keys));
+
+// Stationary portal management: admins or any user granted the
+// "stationary_admin" feature (e.g. a branch manager or transfer user).
+export const stationaryAdminQuery = authedQuery.use(requirePermission("stationary_admin"));
 
 // Main admins (role "admin", no adminRole bucket) only.
 // Sub-admins are still type "admin" but are scoped to their bucket.

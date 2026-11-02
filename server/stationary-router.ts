@@ -293,7 +293,10 @@ export const stationaryRouter = createRouter({
     const enabled = settings?.enabled ?? false;
     const inWindow = nowWindowOpen(settings);
     const allowedRoles = ((settings?.allowedRoles as unknown) ?? []) as string[];
-    const roleAllowed = ctx.user.role === "admin" ? true : ctx.user.role === "branch";
+    // The Super Admin controls this per user from Users & Access. Role defaults
+    // preserve the previous behaviour (admins, branch users, transfer users
+    // with stationary access).
+    const roleAllowed = !!ctx.permissions?.stationary_order;
     const canOrder = enabled && inWindow && roleAllowed;
     return {
       enabled,
@@ -310,6 +313,9 @@ export const stationaryRouter = createRouter({
   getOrderableItems: authedQuery.query(async ({ ctx }) => {
     const supabase = getSupabaseAdmin();
     if (ctx.user.role !== "branch") throw new Error("Only branch users can order stationary");
+    if (!ctx.permissions?.stationary_order) {
+      throw new Error("You do not have stationary ordering access. Contact an administrator.");
+    }
     const branchId = getActingBranchId(ctx);
 
     const { data: items, error } = await supabase
@@ -375,6 +381,9 @@ export const stationaryRouter = createRouter({
     .mutation(async ({ ctx, input }) => {
       const supabase = getSupabaseAdmin();
       if (ctx.user.role !== "branch") throw new Error("Only branch users can order stationary");
+      if (!ctx.permissions?.stationary_order) {
+        throw new Error("You do not have stationary ordering access. Contact an administrator.");
+      }
       const branchId = getActingBranchId(ctx);
 
       const settings = await getPortalSettings(supabase);

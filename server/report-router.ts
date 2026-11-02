@@ -1,11 +1,12 @@
 import { z } from "zod";
-import { createRouter, adminQuery } from "./middleware.js";
+import { createRouter, permissionQuery } from "./middleware.js";
 import { getSupabaseAdmin } from "./lib/supabase.js";
 import type { TicketStatusRow, TicketPriorityRow, TicketCategoryRow, TicketRow, Profile } from "./lib/db-types.js";
 import { getTicketScopeFilter } from "./lib/utils.js";
+import { getUserDepartment } from "./lib/permissions.js";
 
 export const reportRouter = createRouter({
-  generate: adminQuery
+  generate: permissionQuery("reports")
     .input(
       z.object({
         dateFrom: z.string(),
@@ -19,6 +20,7 @@ export const reportRouter = createRouter({
     .query(async ({ ctx, input }) => {
       const supabase = getSupabaseAdmin();
       const scope = getTicketScopeFilter(ctx.user);
+      const department = getUserDepartment(ctx.user);
 
       let query = supabase
         .from("tickets")
@@ -28,6 +30,11 @@ export const reportRouter = createRouter({
 
       if (scope) {
         query = query.eq("branchRole", scope.branchRole);
+      } else if (ctx.user.type !== "admin") {
+        // Non-admins granted the "reports" feature are scoped to their own
+        // department, or to the tickets they raised when they have no bucket.
+        if (department) query = query.eq("branchRole", department);
+        else query = query.eq("createdBy", ctx.user.id);
       }
 
       if (input.branchIds && input.branchIds.length > 0) {

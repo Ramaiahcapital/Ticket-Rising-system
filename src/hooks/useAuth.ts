@@ -1,6 +1,7 @@
 import { trpc } from "@/providers/trpc";
 import { supabase } from "@/lib/supabase";
 import { useCallback, useMemo } from "react";
+import type { PermissionKey, PermissionMap } from "@/lib/permissions";
 
 export type UnifiedUser =
   | {
@@ -53,6 +54,11 @@ export type UnifiedUser =
       canRaiseTicket: boolean;
     };
 
+/** auth.me also returns the effective permission map. */
+export type AuthUser = UnifiedUser & {
+  permissions?: Partial<PermissionMap>;
+};
+
 export function useAuth() {
   const utils = trpc.useUtils();
 
@@ -81,28 +87,36 @@ export function useAuth() {
     window.location.reload();
   }, [logoutMutation]);
 
-  return useMemo(
-    () => ({
-      user: (user as UnifiedUser) ?? null,
+  return useMemo(() => {
+    const authUser = (user as AuthUser | undefined) ?? null;
+    const permissions = (authUser?.permissions ?? {}) as Partial<PermissionMap>;
+    const hasPermission = (key: PermissionKey) => !!permissions[key];
+
+    return {
+      user: authUser,
+      permissions,
+      hasPermission,
       isAuthenticated: !!user,
       isAdmin: user?.type === "admin",
       /** Main admin (no sub-admin bucket) — has access to all admin features. */
       isMainAdmin: user?.type === "admin" && !user.adminRole,
       /** Whether this user is allowed to raise tickets (any role). */
-      canRaiseTicket: !!(user as UnifiedUser | null)?.canRaiseTicket,
+      canRaiseTicket: !!(permissions.raise_ticket ?? authUser?.canRaiseTicket),
       /** Sub-admin department bucket, or null for main admins / non-admins. */
       adminRole: user?.type === "admin" ? user.adminRole : null,
       isBranch: user?.type === "branch",
       isCluster: user?.type === "cluster",
       isTransfer: user?.type === "transfer",
-      hasStationaryAccess: user?.type === "transfer" && !!(user as any).stationaryAccess,
+      hasStationaryAccess: !!(
+        permissions.stationary_order ??
+        (user?.type === "transfer" && !!(user as any).stationaryAccess)
+      ),
       /** Transfer user promoted to view-only middle admin (monitors a department). */
       isMonitor: user?.type === "transfer" && !!(user as any).monitorRole,
       /** Department the transfer user monitors (view-only). NULL = not a monitor. */
       monitorRole: user?.type === "transfer" ? ((user as any).monitorRole ?? null) : null,
       isLoading: isLoading || logoutMutation.isPending,
       logout,
-    }),
-    [user, isLoading, logoutMutation.isPending, logout],
-  );
+    };
+  }, [user, isLoading, logoutMutation.isPending, logout]);
 }

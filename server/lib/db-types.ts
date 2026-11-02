@@ -280,6 +280,17 @@ export type StationaryOrderItemRow = {
   createdAt: string | null;
 };
 
+/** Per-user feature permission override (null/absent row = role default). */
+export type UserPermissionRow = {
+  id: string;
+  userId: string;
+  permission: string;
+  granted: boolean;
+  createdAt: string | null;
+  updatedAt: string | null;
+  updatedBy: string | null;
+};
+
 /** Unified user shape shared with the frontend. */
 export type UnifiedUser =
   | {

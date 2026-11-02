@@ -56,7 +56,9 @@ const transferNavBase: NavItem[] = [
   { label: "Email Settings", icon: Mail, path: "/email-settings" },
 ];
 const transferMonitorItem: NavItem = { label: "Monitor", icon: Eye, path: "/monitor" };
-const transferStationaryItem: NavItem = { label: "Stationary", icon: Package, path: "/stationary/admin" };
+const transferStationaryItem: NavItem = { label: "Stationary Admin", icon: Package, path: "/stationary/admin" };
+const transferStationaryOrderItem: NavItem = { label: "Stationary", icon: Package, path: "/stationary" };
+const branchStationaryAdminItem: NavItem = { label: "Stationary Admin", icon: Package, path: "/stationary/admin" };
 const transferCreateTicketItem: NavItem = { label: "Create Ticket", icon: Ticket, path: "/tickets/new" };
 
 const stationaryAdminNavItems: NavItem[] = [
@@ -77,7 +79,7 @@ const settingsChildren: NavItem[] = [
 export default function Sidebar({ isAdmin, mobile, onClose }: SidebarProps) {
   const navigate = useNavigate();
   const location = useLocation();
-  const { logout, user, isCluster, isTransfer, hasStationaryAccess, canRaiseTicket } = useAuth();
+  const { logout, user, isCluster, isTransfer, canRaiseTicket, hasPermission } = useAuth();
   const { getColor } = useBranchRoles();
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
   const [showChangePassword, setShowChangePassword] = useState(false);
@@ -169,25 +171,32 @@ export default function Sidebar({ isAdmin, mobile, onClose }: SidebarProps) {
                 <Ticket className={`w-5 h-5 ${location.pathname === "/tickets/new" ? "text-red-600" : "text-gray-400"}`} /> Create Ticket
               </button>
             )}
-            {isMainAdmin && (
+            {hasPermission("audit_log") && (
               <button onClick={() => go("/audit-log")} className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all ${location.pathname === "/audit-log" ? "bg-red-50 text-red-600 border-l-[3px] border-red-600" : "text-gray-600 hover:bg-gray-50 hover:text-gray-900"}`}>
                 <ClipboardList className={`w-5 h-5 ${location.pathname === "/audit-log" ? "text-red-600" : "text-gray-400"}`} /> Audit Log
               </button>
             )}
-            {isMainAdmin && (
+            {hasPermission("manage_users") && (
+              <button onClick={() => go("/users")} className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all ${location.pathname === "/users" ? "bg-red-50 text-red-600 border-l-[3px] border-red-600" : "text-gray-600 hover:bg-gray-50 hover:text-gray-900"}`}>
+                <Users className={`w-5 h-5 ${location.pathname === "/users" ? "text-red-600" : "text-gray-400"}`} /> Users &amp; Access
+              </button>
+            )}
+            {hasPermission("manage_users") && (
               <button onClick={() => go("/ticket-access")} className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all ${location.pathname === "/ticket-access" ? "bg-red-50 text-red-600 border-l-[3px] border-red-600" : "text-gray-600 hover:bg-gray-50 hover:text-gray-900"}`}>
                 <TicketCheck className={`w-5 h-5 ${location.pathname === "/ticket-access" ? "text-red-600" : "text-gray-400"}`} /> Ticket Access
               </button>
             )}
-            <button onClick={() => go("/reports")} className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all ${location.pathname === "/reports" ? "bg-red-50 text-red-600 border-l-[3px] border-red-600" : "text-gray-600 hover:bg-gray-50 hover:text-gray-900"}`}>
-              <BarChart3 className={`w-5 h-5 ${location.pathname === "/reports" ? "text-red-600" : "text-gray-400"}`} /> Reports
-            </button>
+            {hasPermission("reports") && (
+              <button onClick={() => go("/reports")} className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all ${location.pathname === "/reports" ? "bg-red-50 text-red-600 border-l-[3px] border-red-600" : "text-gray-600 hover:bg-gray-50 hover:text-gray-900"}`}>
+                <BarChart3 className={`w-5 h-5 ${location.pathname === "/reports" ? "text-red-600" : "text-gray-400"}`} /> Reports
+              </button>
+            )}
             {isMainAdmin && (
             <button onClick={() => go("/transfer-users")} className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all ${location.pathname === "/transfer-users" ? "bg-red-50 text-red-600 border-l-[3px] border-red-600" : "text-gray-600 hover:bg-gray-50 hover:text-gray-900"}`}>
               <Forward className={`w-5 h-5 ${location.pathname === "/transfer-users" ? "text-red-600" : "text-gray-400"}`} /> Transfer Users
             </button>
             )}
-            {isMainAdmin && (
+            {hasPermission("stationary_admin") && (
               <button onClick={() => go("/stationary/admin")} className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all ${location.pathname === "/stationary/admin" ? "bg-red-50 text-red-600 border-l-[3px] border-red-600" : "text-gray-600 hover:bg-gray-50 hover:text-gray-900"}`}>
                 <Package className={`w-5 h-5 ${location.pathname === "/stationary/admin" ? "text-red-600" : "text-gray-400"}`} /> Stationary
               </button>
@@ -197,7 +206,9 @@ export default function Sidebar({ isAdmin, mobile, onClose }: SidebarProps) {
             </button>
 
             {/* Settings (expandable) — main admins only */}
-            {isMainAdmin && (
+            {(hasPermission("manage_settings") ||
+              hasPermission("manage_departments") ||
+              hasPermission("manage_users")) && (
               <div>
               <button
                 onClick={() => setSettingsOpen((o) => !o)}
@@ -215,6 +226,19 @@ export default function Sidebar({ isAdmin, mobile, onClose }: SidebarProps) {
               {settingsOpen && (
                 <div className="ml-4 mt-1 space-y-1 border-l border-gray-200 pl-3">
                   {settingsChildren.map((c) => {
+                    if (c.path === "/admin-users" && !hasPermission("manage_users")) return null;
+                    if (
+                      (c.path === "/roles" || c.path === "/branches" || c.path === "/clusters") &&
+                      !hasPermission("manage_departments")
+                    )
+                      return null;
+                    if (
+                      (c.path === "/settings" ||
+                        c.path === "/ticket-form-config" ||
+                        c.path === "/statuses") &&
+                      !hasPermission("manage_settings")
+                    )
+                      return null;
                     const isActive = location.pathname === c.path;
                     return (
                       <button
@@ -255,9 +279,10 @@ export default function Sidebar({ isAdmin, mobile, onClose }: SidebarProps) {
         ) : isTransfer ? (
           (() => {
             const monitorRole = (user as any)?.monitorRole;
-            let transferNavItems = [...transferNavBase];
+            const transferNavItems = [...transferNavBase];
             if (canRaiseTicket) transferNavItems.splice(1, 0, transferCreateTicketItem);
-            if (hasStationaryAccess) transferNavItems.push(transferStationaryItem);
+            if (hasPermission("stationary_order")) transferNavItems.push(transferStationaryOrderItem);
+            if (hasPermission("stationary_admin")) transferNavItems.push(transferStationaryItem);
             if (monitorRole) {
               transferNavItems.unshift(transferMonitorItem);
             }
@@ -280,7 +305,14 @@ export default function Sidebar({ isAdmin, mobile, onClose }: SidebarProps) {
           });
           })()
         ) : (
-          branchNavItems.filter((i) => i.path !== "/tickets/new" || canRaiseTicket).map((item) => {
+          (() => {
+            const items = branchNavItems.filter((i) => {
+              if (i.path === "/tickets/new") return canRaiseTicket;
+              if (i.path === "/stationary") return hasPermission("stationary_order");
+              return true;
+            });
+            if (hasPermission("stationary_admin")) items.push(branchStationaryAdminItem);
+            return items.map((item) => {
             const isActive = location.pathname === item.path;
             return (
               <button
@@ -296,7 +328,8 @@ export default function Sidebar({ isAdmin, mobile, onClose }: SidebarProps) {
                 {item.label}
               </button>
             );
-          })
+          });
+          })()
         )}
       </nav>
 

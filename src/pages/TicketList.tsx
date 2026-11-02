@@ -57,6 +57,13 @@ export default function TicketList() {
       const data = result.data;
       if (!data || data.length === 0) return;
 
+      const formatDateTime = (value?: string | null) => {
+        if (!value) return "-";
+        const date = new Date(value);
+        if (Number.isNaN(date.getTime())) return "-";
+        return `${date.toLocaleDateString()} ${date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`;
+      };
+
       const wsData = data.map(t => ({
         "Ticket Number": t.ticketNumber,
         "Subject": t.subject,
@@ -64,11 +71,12 @@ export default function TicketList() {
         "Progress": t.status,
         "Department": t.branchRole,
         "Created": new Date(t.createdAt ?? new Date()).toLocaleDateString(),
+        "Last Status Updated Date": formatDateTime(t.lastStatusUpdatedAt),
       }));
 
       const ws = XLSX.utils.json_to_sheet(wsData);
       ws["!cols"] = [
-        { wch: 18 }, { wch: 40 }, { wch: 20 }, { wch: 15 }, { wch: 18 }, { wch: 14 },
+        { wch: 18 }, { wch: 40 }, { wch: 20 }, { wch: 15 }, { wch: 18 }, { wch: 14 }, { wch: 24 },
       ];
       const wb = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(wb, ws, "Tickets");

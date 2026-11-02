@@ -10,7 +10,6 @@ import {
   requireRoleExists,
   getTicketScopeFilter,
   canAdminAccessTicket,
-  getRoleAdminRecipients,
   notifyRoleAdmins,
   hasTransferAccess,
   getUserEmail,
@@ -22,6 +21,8 @@ import {
 } from "./lib/utils.js";
 import { sendEmailFromUser } from "./email-service.js";
 import type { TrpcContext } from "./context.js";
+import { getUserDepartment } from "./lib/permissions.js";
+import { resolveTicketEmailRecipients } from "./lib/ticket-notifications.js";
 
 function getActorName(ctx: { user: TrpcContext["user"] }): string {
   if (!ctx.user) return "Unknown";
@@ -64,7 +65,16 @@ export const ticketRouter = createRouter({
       let query = supabase.from("tickets").select("*", { count: "exact" });
 
       if (ctx.user.type === "branch") {
-        query = query.eq("branchId", ctx.user.id);
+        // Branch users normally see only their own tickets. If the Super Admin
+        // grants "view_department_tickets", they also see their department's
+        // tickets (read-only).
+        if (ctx.permissions?.view_department_tickets && ctx.user.branchRole) {
+          query = query.or(
+            `branchId.eq.${ctx.user.id},branchRole.eq.${ctx.user.branchRole}`
+          );
+        } else {
+          query = query.eq("branchId", ctx.user.id);
+        }
       } else if (ctx.user.type === "cluster") {
         query = query.eq("branchId", ctx.user.id);
       } else if (ctx.user.type === "transfer") {
@@ -210,7 +220,16 @@ export const ticketRouter = createRouter({
       let query = supabase.from("tickets").select("*", { count: "exact" });
 
       if (ctx.user.type === "branch") {
-        query = query.eq("branchId", ctx.user.id);
+        // Branch users normally see only their own tickets. If the Super Admin
+        // grants "view_department_tickets", they also see their department's
+        // tickets (read-only).
+        if (ctx.permissions?.view_department_tickets && ctx.user.branchRole) {
+          query = query.or(
+            `branchId.eq.${ctx.user.id},branchRole.eq.${ctx.user.branchRole}`
+          );
+        } else {
+          query = query.eq("branchId", ctx.user.id);
+        }
       } else if (ctx.user.type === "cluster") {
         query = query.eq("branchId", ctx.user.id);
       } else if (ctx.user.type === "transfer") {
@@ -251,6 +270,27 @@ export const ticketRouter = createRouter({
       const branchMap = new Map((branches ?? []).map((b) => [b.id, b]));
       const profileMap = new Map((profiles ?? []).map((p) => [p.id, p]));
 
+      // Fallback for older databases where the tickets."statusChangedAt"
+      // column has not been added yet (or was never backfilled): use the most
+      // recent "status_changed" entry from the ticket timeline.
+      const ticketIds = (items ?? []).map((t) => t.id);
+      const latestStatusChange = new Map<string, string>();
+      if (ticketIds.length) {
+        const { data: statusEvents } = await supabase
+          .from("ticket_timeline")
+          .select("ticketId, createdAt")
+          .in("ticketId", ticketIds)
+          .eq("action", "status_changed");
+
+        for (const event of statusEvents ?? []) {
+          if (!event.createdAt) continue;
+          const previous = latestStatusChange.get(event.ticketId);
+          if (!previous || new Date(event.createdAt) > new Date(previous)) {
+            latestStatusChange.set(event.ticketId, event.createdAt);
+          }
+        }
+      }
+
       return (items ?? []).map((t) => ({
         ticketNumber: t.ticketNumber,
         subject: t.subject,
@@ -258,6 +298,10 @@ export const ticketRouter = createRouter({
         status: statusMap.get(t.statusId ?? "")?.name || "-",
         branchRole: t.branchRole || "-",
         createdAt: t.createdAt,
+        // Last time the ticket's status was changed. The timeline fallback
+        // covers tickets created before the statusChangedAt column existed.
+        lastStatusUpdatedAt:
+          t.statusChangedAt ?? latestStatusChange.get(t.id) ?? t.updatedAt ?? null,
       }));
     }),
 
@@ -298,6 +342,12 @@ export const ticketRouter = createRouter({
       if (!hasAccess) {
         const email = await getUserEmail(ctx.user);
         if (await hasTransferAccess(ctx.user.id, email, input.id)) hasAccess = true;
+      }
+      // Department viewers (e.g. a branch manager granted ticket access) can
+      // open tickets routed to their own department. Read-only.
+      if (!hasAccess && ctx.permissions?.view_department_tickets) {
+        const department = getUserDepartment(ctx.user);
+        if (department && ticket.branchRole === department) hasAccess = true;
       }
       if (!hasAccess) throw new Error("Access denied");
 
@@ -353,7 +403,7 @@ export const ticketRouter = createRouter({
     .mutation(async ({ ctx, input }) => {
       const supabase = getSupabaseAdmin();
 
-      if (!ctx.user.canRaiseTicket) {
+      if (!ctx.permissions?.raise_ticket) {
         throw new Error("You do not have permission to raise tickets. Contact an administrator.");
       }
 
@@ -432,56 +482,46 @@ export const ticketRouter = createRouter({
         ticketId,
       });
 
-      // Send email from branch user to the admins relevant to this ticket's department
+      // Send email to the recipients configured for new tickets.
+      // Default: the admins responsible for this ticket's department.
+      // The Super Admin can switch this to "all active users" or a custom
+      // recipient list from the Users & Access page.
       const emailStatus = newEmailStatus();
       try {
         const supabase = getSupabaseAdmin();
+        const resolved = await resolveTicketEmailRecipients(ticketRole);
 
-        // Check if email notifications are enabled for this role
-        let emailEnabled = true;
-        if (ticketRole) {
-          const { data: roleSetting } = await supabase
-            .from("branch_roles")
-            .select("emailNotifications")
-            .eq("name", ticketRole)
-            .maybeSingle();
-          if (roleSetting?.emailNotifications === false) emailEnabled = false;
-        }
-        if (!emailEnabled) {
-          recordEmailFailure(emailStatus, `Email notifications are turned off for the "${ticketRole}" department.`);
+        const { data: sender } = await supabase
+          .from("profiles")
+          .select("branchName, email")
+          .eq("id", ctx.user.id)
+          .maybeSingle();
+
+        if (resolved.disabledReason) {
+          recordEmailFailure(emailStatus, resolved.disabledReason);
+        } else if (!sender?.email) {
+          recordEmailFailure(emailStatus, "Your profile has no email address on record.");
         } else {
-          const admins = await getRoleAdminRecipients(ticketRole, { activeOnly: true });
-          const { data: sender } = await supabase
-            .from("profiles")
-            .select("branchName, email")
-            .eq("id", ctx.user.id)
-            .maybeSingle();
-          if (!admins.length) {
-            recordEmailFailure(emailStatus, `No admin is configured to receive "${ticketRole ?? "any"}" department emails.`);
-          } else if (!sender?.email) {
-            recordEmailFailure(emailStatus, "Your profile has no email address on record.");
-          } else {
-            const branchLabel = sender.branchName || "Branch";
-            for (const admin of admins) {
-              await sendEmailTally(
-                emailStatus,
-                ctx.user.id,
-                admin.email,
-                `New Ticket: ${ticketNumber} - ${subject}`,
-                `<div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;">
-                    <h2 style="color:#DC2626;">New Support Ticket</h2>
-                    <table style="width:100%;border-collapse:collapse;">
-                      <tr><td style="padding:8px;font-weight:bold;border-bottom:1px solid #eee;">Ticket #</td><td style="padding:8px;border-bottom:1px solid #eee;">${ticketNumber}</td></tr>
-                      <tr><td style="padding:8px;font-weight:bold;border-bottom:1px solid #eee;">Subject</td><td style="padding:8px;border-bottom:1px solid #eee;">${subject}</td></tr>
-                      <tr><td style="padding:8px;font-weight:bold;border-bottom:1px solid #eee;">Branch</td><td style="padding:8px;border-bottom:1px solid #eee;">${branchLabel}</td></tr>
-                      <tr><td style="padding:8px;font-weight:bold;border-bottom:1px solid #eee;">Department</td><td style="padding:8px;border-bottom:1px solid #eee;">${input.department || "Not specified"}</td></tr>
-                      <tr><td style="padding:8px;font-weight:bold;border-bottom:1px solid #eee;">Description</td><td style="padding:8px;border-bottom:1px solid #eee;">${input.description}</td></tr>
-                    </table>
-                    ${portalButton()}
-                    <p style="margin-top:16px;color:#666;">This ticket was raised from the Ramaiah Capital Ticket Management System.</p>
-                  </div>`
-              );
-            }
+          const branchLabel = sender.branchName || "Branch";
+          for (const recipient of resolved.recipients) {
+            await sendEmailTally(
+              emailStatus,
+              ctx.user.id,
+              recipient.email,
+              `New Ticket: ${ticketNumber} - ${subject}`,
+              `<div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;">
+                  <h2 style="color:#DC2626;">New Support Ticket</h2>
+                  <table style="width:100%;border-collapse:collapse;">
+                    <tr><td style="padding:8px;font-weight:bold;border-bottom:1px solid #eee;">Ticket #</td><td style="padding:8px;border-bottom:1px solid #eee;">${ticketNumber}</td></tr>
+                    <tr><td style="padding:8px;font-weight:bold;border-bottom:1px solid #eee;">Subject</td><td style="padding:8px;border-bottom:1px solid #eee;">${subject}</td></tr>
+                    <tr><td style="padding:8px;font-weight:bold;border-bottom:1px solid #eee;">Branch</td><td style="padding:8px;border-bottom:1px solid #eee;">${branchLabel}</td></tr>
+                    <tr><td style="padding:8px;font-weight:bold;border-bottom:1px solid #eee;">Department</td><td style="padding:8px;border-bottom:1px solid #eee;">${input.department || "Not specified"}</td></tr>
+                    <tr><td style="padding:8px;font-weight:bold;border-bottom:1px solid #eee;">Description</td><td style="padding:8px;border-bottom:1px solid #eee;">${input.description}</td></tr>
+                  </table>
+                  ${portalButton()}
+                  <p style="margin-top:16px;color:#666;">This ticket was raised from the Ramaiah Capital Ticket Management System.</p>
+                </div>`
+            );
           }
         }
       } catch (e) {
@@ -615,7 +655,8 @@ export const ticketRouter = createRouter({
         error = e;
       }
       if (error && String(error.message).includes("statusChangedAt")) {
-        const { statusChangedAt, ...safe } = updateData;
+        const safe = { ...updateData };
+        delete safe.statusChangedAt;
         const retry = await supabase.from("tickets").update(safe).eq("id", input.ticketId);
         error = retry.error;
       }

@@ -30,7 +30,9 @@ import TicketAccess from "@/pages/TicketAccess";
 import TransferUsersPage from "@/pages/TransferUsersPage";
 import TransferAccept from "@/pages/TransferAccept";
 import MonitorDashboard from "@/pages/MonitorDashboard";
+import AllUsersPage from "@/pages/AllUsersPage";
 import NotFound from "@/pages/NotFound";
+import type { PermissionKey } from "@/lib/permissions";
 
 function ProtectedRoute({
   children,
@@ -38,6 +40,7 @@ function ProtectedRoute({
   requireMainAdmin = false,
   requireStationaryAdmin = false,
   requireCanRaise = false,
+  requirePermission,
   blockTransfer = false,
 }: {
   children: React.ReactNode;
@@ -45,9 +48,10 @@ function ProtectedRoute({
   requireMainAdmin?: boolean;
   requireStationaryAdmin?: boolean;
   requireCanRaise?: boolean;
+  requirePermission?: PermissionKey;
   blockTransfer?: boolean;
 }) {
-  const { user, isLoading } = useAuth();
+  const { user, isLoading, hasPermission } = useAuth();
 
   if (isLoading) {
     return (
@@ -62,6 +66,10 @@ function ProtectedRoute({
   }
 
   if (blockTransfer && user.type === "transfer") {
+    return <Navigate to="/" replace />;
+  }
+
+  if (requirePermission && !hasPermission(requirePermission)) {
     return <Navigate to="/" replace />;
   }
 
@@ -101,7 +109,7 @@ export default function App() {
       <Route
         path="/tickets/new"
         element={
-          <ProtectedRoute requireCanRaise>
+          <ProtectedRoute requirePermission="raise_ticket">
             <CreateTicket />
           </ProtectedRoute>
         }
@@ -117,7 +125,7 @@ export default function App() {
       <Route
         path="/statuses"
         element={
-          <ProtectedRoute requireMainAdmin>
+          <ProtectedRoute requirePermission="manage_settings">
             <StatusManagement />
           </ProtectedRoute>
         }
@@ -125,7 +133,7 @@ export default function App() {
       <Route
         path="/categories"
         element={
-          <ProtectedRoute requireMainAdmin>
+          <ProtectedRoute requirePermission="manage_settings">
             <CategoryManagement />
           </ProtectedRoute>
         }
@@ -133,7 +141,7 @@ export default function App() {
       <Route
         path="/settings"
         element={
-          <ProtectedRoute requireMainAdmin>
+          <ProtectedRoute requirePermission="manage_settings">
             <SettingsPage />
           </ProtectedRoute>
         }
@@ -141,7 +149,7 @@ export default function App() {
       <Route
         path="/audit-log"
         element={
-          <ProtectedRoute requireMainAdmin>
+          <ProtectedRoute requirePermission="audit_log">
             <AuditLogPage />
           </ProtectedRoute>
         }
@@ -157,7 +165,7 @@ export default function App() {
       <Route
         path="/reports"
         element={
-          <ProtectedRoute requireAdmin>
+          <ProtectedRoute requirePermission="reports">
             <ReportsPage />
           </ProtectedRoute>
         }
@@ -165,7 +173,7 @@ export default function App() {
       <Route
         path="/stationary/admin"
         element={
-          <ProtectedRoute requireStationaryAdmin>
+          <ProtectedRoute requirePermission="stationary_admin">
             <StationaryAdmin />
           </ProtectedRoute>
         }
@@ -173,7 +181,7 @@ export default function App() {
       <Route
         path="/stationary"
         element={
-          <ProtectedRoute blockTransfer>
+          <ProtectedRoute requirePermission="stationary_order">
             <StationaryPortal />
           </ProtectedRoute>
         }
@@ -181,7 +189,7 @@ export default function App() {
       <Route
         path="/branches"
         element={
-          <ProtectedRoute requireMainAdmin>
+          <ProtectedRoute requirePermission="manage_departments">
             <BranchesPage />
           </ProtectedRoute>
         }
@@ -189,7 +197,7 @@ export default function App() {
       <Route
         path="/ticket-form-config"
         element={
-          <ProtectedRoute requireMainAdmin>
+          <ProtectedRoute requirePermission="manage_settings">
             <TicketFormConfig />
           </ProtectedRoute>
         }
@@ -197,7 +205,7 @@ export default function App() {
       <Route
         path="/roles"
         element={
-          <ProtectedRoute requireMainAdmin>
+          <ProtectedRoute requirePermission="manage_departments">
             <RolesManagement />
           </ProtectedRoute>
         }
@@ -205,7 +213,7 @@ export default function App() {
       <Route
         path="/clusters"
         element={
-          <ProtectedRoute requireMainAdmin>
+          <ProtectedRoute requirePermission="manage_departments">
             <ClusterManagement />
           </ProtectedRoute>
         }
@@ -215,6 +223,14 @@ export default function App() {
         element={
           <ProtectedRoute requireMainAdmin>
             <AdminUsersPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/users"
+        element={
+          <ProtectedRoute requirePermission="manage_users">
+            <AllUsersPage />
           </ProtectedRoute>
         }
       />
