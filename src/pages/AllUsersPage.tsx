@@ -1013,8 +1013,14 @@ export default function AllUsersPage() {
           <div className="relative w-full max-w-md rounded-xl bg-white p-5 shadow-xl">
             <h3 className="mb-2 text-lg font-semibold text-gray-800">Password reset</h3>
             <p className="mb-3 text-sm text-gray-600">New temporary password:</p>
-            <div className="rounded-lg border border-gray-200 bg-gray-50 p-3 text-center font-mono text-sm">
-              {tempPassword}
+            <div className="flex items-center justify-between gap-3 rounded-lg border border-gray-200 bg-gray-50 p-3">
+              <span className="break-all font-mono text-sm">{tempPassword}</span>
+              <button
+                onClick={() => navigator.clipboard.writeText(tempPassword)}
+                className="shrink-0 text-xs font-medium text-red-600 hover:text-red-700"
+              >
+                Copy
+              </button>
             </div>
             <p className="mt-3 text-xs text-amber-600">
               Share this password securely with the user. They can change it after signing in.

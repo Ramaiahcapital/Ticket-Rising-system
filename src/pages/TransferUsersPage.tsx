@@ -11,6 +11,7 @@ export default function TransferUsersPage() {
   const [search, setSearch] = useState("");
   const [resetPasswordId, setResetPasswordId] = useState<string | null>(null);
   const [newPassword, setNewPassword] = useState<string | null>(null);
+  const [resetError, setResetError] = useState("");
 
   const utils = trpc.useUtils();
   const { data, isLoading } = trpc.transferUser.list.useQuery({ search: search || undefined });
@@ -41,8 +42,8 @@ export default function TransferUsersPage() {
     onError: (e) => { alert(e.message); },
   });
   const resetPassword = trpc.transferUser.resetPassword.useMutation({
-    onSuccess: (data) => { setNewPassword(data.password); setResetPasswordId(null); },
-    onError: (e) => { alert(e.message); setResetPasswordId(null); },
+    onSuccess: (data) => { setNewPassword(data.password); setResetError(""); },
+    onError: (e) => { setResetError(e.message); },
   });
 
   const reset = () => {
@@ -226,6 +227,7 @@ export default function TransferUsersPage() {
                           onClick={() => {
                             setResetPasswordId(u.id);
                             setNewPassword(null);
+                            setResetError("");
                           }}
                           className="inline-flex items-center gap-1 rounded-lg border border-gray-200 bg-white px-2.5 py-1 text-xs font-medium text-gray-700 hover:bg-amber-50 hover:border-amber-200 hover:text-amber-700 transition-colors"
                           title="Reset Password"
@@ -336,7 +338,7 @@ export default function TransferUsersPage() {
               {editingId && (
                 <button
                   type="button"
-                  onClick={() => { setShowModal(false); setResetPasswordId(editingId); setNewPassword(null); }}
+                  onClick={() => { setShowModal(false); setResetPasswordId(editingId); setNewPassword(null); setResetError(""); }}
                   className="w-full flex items-center justify-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm font-medium text-amber-700 hover:bg-amber-100 transition-colors"
                 >
                   <KeyRound className="w-4 h-4" /> Reset Password
@@ -375,15 +377,26 @@ export default function TransferUsersPage() {
               </button>
             </div>
             <div className="p-6">
+              {resetError && (
+                <p className="mb-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+                  {resetError}
+                </p>
+              )}
               {newPassword ? (
                 <div className="space-y-3">
                   <p className="text-sm text-gray-600">New password generated:</p>
-                  <div className="bg-gray-50 border border-gray-200 rounded-lg px-4 py-3 font-mono text-lg text-center text-gray-800">
-                    {newPassword}
+                  <div className="flex items-center justify-between gap-3 rounded-lg border border-gray-200 bg-gray-50 px-4 py-3">
+                    <span className="break-all font-mono text-lg text-gray-800">{newPassword}</span>
+                    <button
+                      onClick={() => navigator.clipboard.writeText(newPassword)}
+                      className="shrink-0 text-xs font-medium text-purple-600 hover:text-purple-700"
+                    >
+                      Copy
+                    </button>
                   </div>
                   <p className="text-xs text-amber-600">Save this password. It will not be shown again.</p>
                   <button
-                    onClick={() => { setResetPasswordId(null); setNewPassword(null); }}
+                    onClick={() => { setResetPasswordId(null); setNewPassword(null); setResetError(""); }}
                     className="w-full px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white text-sm font-medium rounded-lg transition-colors"
                   >
                     Done
@@ -394,13 +407,13 @@ export default function TransferUsersPage() {
                   <p className="text-sm text-gray-600">Generate a new random password for this user?</p>
                   <div className="flex justify-end gap-3">
                     <button
-                      onClick={() => { setResetPasswordId(null); setNewPassword(null); }}
+                      onClick={() => { setResetPasswordId(null); setNewPassword(null); setResetError(""); }}
                       className="px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
                     >
                       Cancel
                     </button>
                     <button
-                      onClick={() => resetPassword.mutate({ id: resetPasswordId })}
+                      onClick={() => { if (resetPasswordId) resetPassword.mutate({ id: resetPasswordId }); }}
                       disabled={resetPassword.isPending}
                       className="flex items-center gap-2 px-4 py-2 bg-amber-500 hover:bg-amber-600 text-white text-sm font-medium rounded-lg transition-colors disabled:opacity-50"
                     >

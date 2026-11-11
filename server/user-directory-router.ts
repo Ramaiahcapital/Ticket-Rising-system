@@ -3,6 +3,7 @@ import { createRouter, mainAdminQuery } from "./middleware.js";
 import { getSupabaseAdmin } from "./lib/supabase.js";
 import type { Profile, BranchRoleRow, ClusterRow } from "./lib/db-types.js";
 import { createAuditLog } from "./lib/utils.js";
+import { generateTemporaryPassword } from "./lib/password.js";
 import {
   defaultPermissions,
   getExplicitPermissionsFor,
@@ -434,11 +435,7 @@ export const userDirectoryRouter = createRouter({
         .maybeSingle();
       if (!target) throw new Error("User not found");
 
-      const chars = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789";
-      let newPassword = "";
-      for (let i = 0; i < 10; i++) {
-        newPassword += chars.charAt(Math.floor(Math.random() * chars.length));
-      }
+      const newPassword = generateTemporaryPassword();
 
       const { error } = await supabase.auth.admin.updateUserById(input.id, {
         password: newPassword,

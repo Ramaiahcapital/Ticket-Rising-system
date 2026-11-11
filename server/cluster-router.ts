@@ -2,6 +2,7 @@ import { z } from "zod";
 import { createRouter, adminQuery, authedQuery, clusterQuery } from "./middleware.js";
 import { getSupabaseAdmin } from "./lib/supabase.js";
 import { createAuditLog, notifyAllAdmins, notifyBranchUsers, portalButton } from "./lib/utils.js";
+import { generateTemporaryPassword } from "./lib/password.js";
 import type { ClusterRow, Profile } from "./lib/db-types.js";
 import { env } from "./lib/env.js";
 import { sendEmailFromUserResult } from "./email-service.js";
@@ -319,11 +320,7 @@ export const clusterRouter = createRouter({
         .maybeSingle();
       if (!user) throw new Error("Cluster user not found");
 
-      const chars = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789";
-      let newPassword = "";
-      for (let i = 0; i < 10; i++) {
-        newPassword += chars.charAt(Math.floor(Math.random() * chars.length));
-      }
+      const newPassword = generateTemporaryPassword();
 
       const { error } = await supabase.auth.admin.updateUserById(input.id, {
         password: newPassword,

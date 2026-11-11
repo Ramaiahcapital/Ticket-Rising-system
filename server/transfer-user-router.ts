@@ -3,6 +3,7 @@ import { createRouter, mainAdminQuery, adminQuery } from "./middleware.js";
 import { getSupabaseAdmin } from "./lib/supabase.js";
 import type { Profile } from "./lib/db-types.js";
 import { createAuditLog } from "./lib/utils.js";
+import { generateTemporaryPassword } from "./lib/password.js";
 
 export const transferUserRouter = createRouter({
   list: mainAdminQuery
@@ -338,11 +339,7 @@ export const transferUserRouter = createRouter({
         .maybeSingle();
       if (!user) throw new Error("Transfer user not found");
 
-      const chars = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789";
-      let newPassword = "";
-      for (let i = 0; i < 10; i++) {
-        newPassword += chars.charAt(Math.floor(Math.random() * chars.length));
-      }
+      const newPassword = generateTemporaryPassword();
 
       const { error } = await supabase.auth.admin.updateUserById(input.id, {
         password: newPassword,
