@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { createRouter, authedQuery } from "./middleware.js";
 import { getSupabaseAdmin } from "./lib/supabase.js";
-import { canAdminAccessTicket, hasTransferAccess, getUserEmail } from "./lib/utils.js";
+import { resolveTicketAccess } from "./lib/ticket-access-check.js";
 
 export const ticketTimelineRouter = createRouter({
   list: authedQuery
@@ -16,32 +16,9 @@ export const ticketTimelineRouter = createRouter({
         .eq("id", input.ticketId)
         .maybeSingle();
       if (!ticket) throw new Error("Ticket not found");
-      let hasAccess = false;
-      if (ctx.user.type === "branch" && ticket.branchId === ctx.user.id) hasAccess = true;
-      else if (ctx.user.type === "admin" && canAdminAccessTicket(ctx.user, ticket.branchRole)) hasAccess = true;
-      else if (ctx.user.type === "cluster") {
-        const clusterId = (ctx.user as any).clusterId ?? null;
-        if (ticket.branchId === ctx.user.id) {
-          hasAccess = true;
-        } else if (clusterId) {
-          const { data: creator } = await supabase
-            .from("profiles")
-            .select("clusterId, role")
-            .eq("id", ticket.branchId)
-            .maybeSingle();
-          if (creator?.role === "branch" && creator.clusterId === clusterId) hasAccess = true;
-        }
+      if ((await resolveTicketAccess(ctx, ticket)) === "none") {
+        throw new Error("Access denied");
       }
-      if (!hasAccess) {
-        const email = await getUserEmail(ctx.user);
-        // Middle admin: view-only access to their monitored department's tickets.
-        if (ctx.user.type === "transfer") {
-          const monitorRole = (ctx.user as any).monitorRole ?? null;
-          if (monitorRole && ticket.branchRole === monitorRole) hasAccess = true;
-        }
-        if (await hasTransferAccess(ctx.user.id, email, input.ticketId)) hasAccess = true;
-      }
-      if (!hasAccess) throw new Error("Access denied");
 
       const { data: entries } = await supabase
         .from("ticket_timeline")

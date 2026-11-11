@@ -40,9 +40,9 @@ export const PERMISSION_GROUPS: PermissionGroup[] = [
       },
       {
         key: "view_department_tickets",
-        label: "Department tickets",
+        label: "Department tickets (default)",
         description:
-          "View tickets routed to the user's department (branch managers, monitors).",
+          "Role default for this user's own department. Use the ticket access matrix when managing a user to set per-department view/edit rights.",
       },
     ],
   },

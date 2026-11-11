@@ -41,6 +41,52 @@ const ACCESS_CHIPS: { key: PermissionKey; label: string }[] = [
 
 type PermissionMap = Record<string, boolean>;
 
+type TicketAccessLevel = "none" | "view" | "edit";
+
+type TicketAccessConfig = {
+  all: TicketAccessLevel | null;
+  departments: Record<string, TicketAccessLevel>;
+};
+
+const TICKET_ACCESS_LABELS: Record<TicketAccessLevel, string> = {
+  none: "No access",
+  view: "View only",
+  edit: "Can edit",
+};
+
+function accessForDepartment(
+  config: TicketAccessConfig | undefined,
+  department: string
+): TicketAccessLevel {
+  if (!config) return "none";
+  const explicit = config.departments[department];
+  if (explicit !== undefined) return explicit;
+  return config.all ?? "none";
+}
+
+function accessSignature(config: {
+  all: TicketAccessLevel | null;
+  departments: Record<string, TicketAccessLevel>;
+}): string {
+  const departments = Object.entries(config.departments)
+    .filter(([, level]) => !!level)
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([department, level]) => `${department}:${level}`)
+    .join("|");
+  return `${config.all ?? ""}::${departments}`;
+}
+
+function ticketAccessSummary(config: TicketAccessConfig | undefined): string {
+  if (!config) return "Own tickets only";
+  if (config.all === "edit") return "All departments · can edit";
+  if (config.all === "view") return "All departments · view only";
+  const visible = Object.entries(config.departments).filter(([, level]) => level !== "none");
+  if (!visible.length) return "Own tickets only";
+  const edit = visible.filter(([, level]) => level === "edit").length;
+  const view = visible.filter(([, level]) => level === "view").length;
+  return `${visible.length} dept${visible.length === 1 ? "" : "s"} · ${edit} edit / ${view} view`;
+}
+
 type DirectoryUser = {
   id: string;
   name: string;
@@ -60,6 +106,9 @@ type DirectoryUser = {
   permissions: PermissionMap;
   defaults: PermissionMap;
   overrides: PermissionMap;
+  ticketAccess?: TicketAccessConfig;
+  ticketAccessDefaults?: TicketAccessConfig;
+  ticketAccessExplicit?: TicketAccessConfig;
   lastLoginAt?: string | null;
 };
 
@@ -270,6 +319,10 @@ export default function AllUsersPage() {
   const [managePermissions, setManagePermissions] = useState<Record<PermissionKey, boolean>>(
     defaultPermissionMap({})
   );
+  const [manageTicketAccessAll, setManageTicketAccessAll] = useState<TicketAccessLevel | "">("");
+  const [manageTicketAccess, setManageTicketAccess] = useState<Record<string, TicketAccessLevel>>(
+    {}
+  );
   const [manageError, setManageError] = useState("");
   const [saving, setSaving] = useState(false);
 
@@ -296,6 +349,9 @@ export default function AllUsersPage() {
     onError: (e) => setManageError(e.message),
   });
   const resetPermissions = trpc.userDirectory.resetPermissions.useMutation({
+    onError: (e) => setManageError(e.message),
+  });
+  const setTicketAccess = trpc.userDirectory.setTicketAccess.useMutation({
     onError: (e) => setManageError(e.message),
   });
   const toggleActive = trpc.userDirectory.toggleActive.useMutation({
@@ -335,13 +391,27 @@ export default function AllUsersPage() {
 
   const departmentNames = new Set(departments.map((d) => d.name));
   if (managing?.department) departmentNames.add(managing.department);
+  if (managing) {
+    for (const name of Object.keys(managing.ticketAccessExplicit?.departments ?? {})) {
+      departmentNames.add(name);
+    }
+  }
   const departmentOptions = Array.from(departmentNames).sort((a, b) => a.localeCompare(b));
+
+  const accessFor = (department: string): TicketAccessLevel => {
+    const explicit = manageTicketAccess[department];
+    if (explicit) return explicit;
+    if (manageTicketAccessAll) return manageTicketAccessAll;
+    return accessForDepartment(managing?.ticketAccessDefaults, department);
+  };
 
   const openManage = (row: DirectoryUser) => {
     setManaging(row);
     setManageError("");
     setManageDepartment(row.department ?? "");
     setManagePermissions(permissionMapOf(row.permissions));
+    setManageTicketAccessAll(row.ticketAccessExplicit?.all ?? "");
+    setManageTicketAccess({ ...(row.ticketAccessExplicit?.departments ?? {}) });
   };
 
   const closeManage = () => {
@@ -385,6 +455,24 @@ export default function AllUsersPage() {
         await setPermissions.mutateAsync({ id: managing.id, permissions: payload });
       }
 
+      const nextAccess = {
+        all: manageTicketAccessAll || null,
+        departments: Object.fromEntries(
+          Object.entries(manageTicketAccess).filter(([, level]) => !!level)
+        ) as Record<string, TicketAccessLevel>,
+      };
+      const currentAccess = {
+        all: managing.ticketAccessExplicit?.all ?? null,
+        departments: managing.ticketAccessExplicit?.departments ?? {},
+      };
+      if (accessSignature(nextAccess) !== accessSignature(currentAccess)) {
+        await setTicketAccess.mutateAsync({
+          id: managing.id,
+          all: nextAccess.all,
+          departments: nextAccess.departments,
+        });
+      }
+
       await refreshAfterManage();
       closeManage();
     } catch {
@@ -401,6 +489,8 @@ export default function AllUsersPage() {
     try {
       await resetPermissions.mutateAsync({ id: managing.id });
       setManagePermissions(defaultPermissionMap(managing.defaults));
+      setManageTicketAccessAll("");
+      setManageTicketAccess({});
       await refreshAfterManage();
     } catch {
       // handled by onError
@@ -640,6 +730,9 @@ export default function AllUsersPage() {
                         {!ACCESS_CHIPS.some((chip) => row.permissions[chip.key]) && (
                           <span className="text-xs text-gray-400">No access</span>
                         )}
+                        <span className="rounded bg-blue-50 px-1.5 py-0.5 text-[11px] font-medium text-blue-700">
+                          {ticketAccessSummary(row.ticketAccess)}
+                        </span>
                       </div>
                     </td>
                     <td className="px-4 py-3">
@@ -851,6 +944,109 @@ export default function AllUsersPage() {
                       </div>
                     </div>
                   ))}
+                </div>
+              </div>
+
+              <div className="rounded-lg border border-gray-200">
+                <div className="border-b border-gray-200 bg-gray-50 px-4 py-2.5">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">
+                    Ticket visibility &amp; editing
+                  </p>
+                  <p className="mt-1 text-xs text-gray-500">
+                    Choose which department tickets appear for this user, and whether they can
+                    only view them or also edit them. Tickets the user raised themselves are
+                    always visible and editable.
+                  </p>
+                </div>
+                <div className="space-y-4 p-4">
+                  <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-gray-100 p-3">
+                    <div>
+                      <p className="text-sm font-medium text-gray-700">All departments</p>
+                      <p className="text-xs text-gray-500">
+                        Applies to every department unless overridden below.
+                      </p>
+                    </div>
+                    <select
+                      value={manageTicketAccessAll}
+                      onChange={(e) =>
+                        setManageTicketAccessAll(e.target.value as TicketAccessLevel | "")
+                      }
+                      className="rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-sm"
+                    >
+                      <option value="">
+                        Role default ({TICKET_ACCESS_LABELS[managing.ticketAccessDefaults?.all ?? "none"]})
+                      </option>
+                      <option value="none">No access</option>
+                      <option value="view">View only</option>
+                      <option value="edit">Can edit</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-400">
+                      Per-department access
+                    </p>
+                    {departmentOptions.length === 0 ? (
+                      <p className="rounded-lg bg-gray-50 px-3 py-2 text-sm text-gray-500">
+                        No departments have been created yet.
+                      </p>
+                    ) : (
+                      <div className="max-h-64 divide-y divide-gray-100 overflow-y-auto rounded-lg border border-gray-200">
+                        {departmentOptions.map((department) => {
+                          const selected = manageTicketAccess[department] ?? "";
+                          const effective = accessFor(department);
+                          return (
+                            <div
+                              key={department}
+                              className="flex flex-wrap items-center justify-between gap-2 px-3 py-2"
+                            >
+                              <div className="min-w-0">
+                                <p className="truncate text-sm text-gray-700">{department}</p>
+                                <p className="text-[11px] text-gray-500">
+                                  Currently:{" "}
+                                  <span
+                                    className={
+                                      effective === "edit"
+                                        ? "font-medium text-emerald-600"
+                                        : effective === "view"
+                                          ? "font-medium text-blue-600"
+                                          : "font-medium text-gray-400"
+                                    }
+                                  >
+                                    {TICKET_ACCESS_LABELS[effective]}
+                                  </span>
+                                </p>
+                              </div>
+                              <select
+                                value={selected}
+                                onChange={(e) =>
+                                  setManageTicketAccess((state) => {
+                                    const next = { ...state };
+                                    const value = e.target.value as TicketAccessLevel | "";
+                                    if (value) next[department] = value;
+                                    else delete next[department];
+                                    return next;
+                                  })
+                                }
+                                className="rounded-lg border border-gray-300 bg-white px-2 py-1 text-xs"
+                              >
+                                <option value="">
+                                  Role default (
+                                  {TICKET_ACCESS_LABELS[
+                                    accessForDepartment(managing.ticketAccessDefaults, department)
+                                  ]}
+                                  )
+                                </option>
+                                <option value="none">No access</option>
+                                <option value="view">View only</option>
+                                <option value="edit">Can edit</option>
+                              </select>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
                 </div>
               </div>
 

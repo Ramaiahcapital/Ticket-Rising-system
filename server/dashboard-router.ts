@@ -1,12 +1,17 @@
 import { createRouter, adminQuery, authedQuery } from "./middleware.js";
 import { getSupabaseAdmin } from "./lib/supabase.js";
 import type { Profile, TicketStatusRow, TicketPriorityRow, TicketRow, TicketTimelineRow } from "./lib/db-types.js";
-import { getTicketScopeFilter } from "./lib/utils.js";
+import {
+  hasAllDepartmentAccess,
+  visibleDepartments,
+} from "./lib/ticket-access.js";
 
 export const dashboardRouter = createRouter({
   adminStats: adminQuery.query(async ({ ctx }) => {
     const supabase = getSupabaseAdmin();
-    const scope = getTicketScopeFilter(ctx.user);
+    const seesAllDepartments = hasAllDepartmentAccess(ctx.ticketAccess);
+    const departments = visibleDepartments(ctx.ticketAccess);
+    const departmentFilter = departments.length ? departments : ["__none__"];
 
     let totalQuery = supabase.from("tickets").select("*", { count: "exact", head: true });
     let allTicketsQuery = supabase.from("tickets").select("*");
@@ -14,12 +19,12 @@ export const dashboardRouter = createRouter({
     let branchCountQuery = supabase.from("profiles").select("*", { count: "exact", head: true }).eq("role", "branch");
     let activeBranchQuery = branchCountQuery;
 
-    if (scope) {
-      totalQuery = totalQuery.eq("branchRole", scope.branchRole);
-      allTicketsQuery = allTicketsQuery.eq("branchRole", scope.branchRole);
-      recentQuery = recentQuery.eq("branchRole", scope.branchRole);
-      branchCountQuery = branchCountQuery.eq("branchRole", scope.branchRole);
-      activeBranchQuery = activeBranchQuery.eq("branchRole", scope.branchRole);
+    if (!seesAllDepartments) {
+      totalQuery = totalQuery.in("branchRole", departmentFilter);
+      allTicketsQuery = allTicketsQuery.in("branchRole", departmentFilter);
+      recentQuery = recentQuery.in("branchRole", departmentFilter);
+      branchCountQuery = branchCountQuery.in("branchRole", departmentFilter);
+      activeBranchQuery = activeBranchQuery.in("branchRole", departmentFilter);
     }
 
     const { count: totalTickets } = await totalQuery;
@@ -98,8 +103,8 @@ export const dashboardRouter = createRouter({
       count: deptCounts[r.name] ?? 0,
       color: r.color,
     }));
-    if (scope) {
-      departmentCounts = departmentCounts.filter((r) => r.name === scope.branchRole);
+    if (!seesAllDepartments) {
+      departmentCounts = departmentCounts.filter((r) => departments.includes(r.name));
     }
 
     // Recent tickets
@@ -107,7 +112,7 @@ export const dashboardRouter = createRouter({
 
     // Stationary budget per branch (main admin only)
     let stationaryBudget: { branchName: string; total: number }[] = [];
-    if (!scope) {
+    if (seesAllDepartments) {
       const { data: branchList } = await supabase.from("branches").select("id, name");
       const { data: orderItems } = await supabase
         .from("stationary_order_items")

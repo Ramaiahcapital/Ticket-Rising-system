@@ -2,6 +2,10 @@ import type { FetchCreateContextFnOptions } from "@trpc/server/adapters/fetch";
 import { getSupabaseAdmin } from "./lib/supabase.js";
 import { mapProfileToUnifiedUser, type Profile, type UnifiedUser } from "./lib/db-types.js";
 import { getEffectivePermissions, type PermissionMap } from "./lib/permissions.js";
+import {
+  getEffectiveTicketAccess,
+  type TicketAccessConfig,
+} from "./lib/ticket-access.js";
 
 export type TrpcContext = {
   req: Request;
@@ -9,11 +13,17 @@ export type TrpcContext = {
   user?: UnifiedUser;
   /** Effective feature permissions for the signed-in user. */
   permissions?: PermissionMap;
+  /** Effective, per-department ticket visibility and editing rights. */
+  ticketAccess?: TicketAccessConfig;
 };
 
 async function loadProfileByAuthId(
   authId: string
-): Promise<{ user: UnifiedUser; permissions: PermissionMap } | null> {
+): Promise<{
+  user: UnifiedUser;
+  permissions: PermissionMap;
+  ticketAccess: TicketAccessConfig;
+} | null> {
   const supabase = getSupabaseAdmin();
   const { data, error } = await supabase
     .from("profiles")
@@ -24,9 +34,11 @@ async function loadProfileByAuthId(
   if (error || !data) return null;
 
   const profile = data as Profile;
+  const permissions = await getEffectivePermissions(profile);
   return {
     user: mapProfileToUnifiedUser(profile),
-    permissions: await getEffectivePermissions(profile),
+    permissions,
+    ticketAccess: await getEffectiveTicketAccess(profile, permissions),
   };
 }
 
@@ -47,6 +59,7 @@ export async function createContext(
         if (loaded) {
           ctx.user = loaded.user;
           ctx.permissions = loaded.permissions;
+          ctx.ticketAccess = loaded.ticketAccess;
         }
       }
     } catch {

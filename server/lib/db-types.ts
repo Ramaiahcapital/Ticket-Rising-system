@@ -291,6 +291,21 @@ export type UserPermissionRow = {
   updatedBy: string | null;
 };
 
+/**
+ * Granular per-user ticket access for one department.
+ * "department" is either a branch_roles.name or "*" for all departments.
+ */
+export type UserTicketAccessRow = {
+  id: string;
+  userId: string;
+  department: string;
+  /** none = hidden, view = read-only, edit = can act on the ticket. */
+  level: "none" | "view" | "edit";
+  createdAt: string | null;
+  updatedAt: string | null;
+  updatedBy: string | null;
+};
+
 /** Unified user shape shared with the frontend. */
 export type UnifiedUser =
   | {

@@ -12,6 +12,14 @@ import {
   PERMISSION_KEYS,
   type PermissionMap,
 } from "./lib/permissions.js";
+import {
+  ALL_DEPARTMENTS_KEY,
+  defaultTicketAccess,
+  getExplicitTicketAccessFor,
+  mergeTicketAccess,
+  type TicketAccessConfig,
+  type TicketAccessLevel,
+} from "./lib/ticket-access.js";
 
 const ROLE_LABEL: Record<string, string> = {
   admin: "Admin",
@@ -38,6 +46,20 @@ function departmentOf(p: Profile): string | null {
   if (p.role === "branch") return p.branchRole ?? null;
   if (p.role === "transfer") return p.monitorRole ?? null;
   return null;
+}
+
+/** Effective ticket access plus the defaults/overrides used by the UI. */
+function ticketAccessPayload(
+  profile: Profile,
+  permissions: PermissionMap,
+  explicit: TicketAccessConfig
+) {
+  const defaults = defaultTicketAccess(profile, permissions);
+  return {
+    ticketAccess: mergeTicketAccess(defaults, explicit),
+    ticketAccessDefaults: defaults,
+    ticketAccessExplicit: explicit,
+  };
 }
 
 export const userDirectoryRouter = createRouter({
@@ -82,12 +104,20 @@ export const userDirectoryRouter = createRouter({
       const clusters = (clusterRows ?? []) as ClusterRow[];
       const clusterMap = new Map(clusters.map((c) => [c.id, c.name]));
 
-      const overrides = await getExplicitPermissionsFor(profiles.map((p) => p.id));
+      const [overrides, ticketAccessOverrides] = await Promise.all([
+        getExplicitPermissionsFor(profiles.map((p) => p.id)),
+        getExplicitTicketAccessFor(profiles.map((p) => p.id)),
+      ]);
 
       let items = profiles.map((p) => {
         const override = overrides.get(p.id) ?? {};
         const defaults = defaultPermissions(p);
         const permissions = mergePermissions(defaults, override);
+        const access = ticketAccessPayload(
+          p,
+          permissions,
+          ticketAccessOverrides.get(p.id) ?? { all: null, departments: {} }
+        );
         return {
           id: p.id,
           name: displayName(p),
@@ -110,6 +140,7 @@ export const userDirectoryRouter = createRouter({
           permissions,
           defaults,
           overrides: override,
+          ...access,
           createdAt: p.createdAt,
           lastLoginAt: p.lastLoginAt,
         };
@@ -187,10 +218,22 @@ export const userDirectoryRouter = createRouter({
       if (!data) return null;
 
       const profile = data as Profile;
-      const overrides = await getExplicitPermissionsFor([profile.id]);
+      const [overrides, ticketAccessOverrides, { data: roleRows }] = await Promise.all([
+        getExplicitPermissionsFor([profile.id]),
+        getExplicitTicketAccessFor([profile.id]),
+        supabase
+          .from("branch_roles")
+          .select("*")
+          .order("sortOrder", { ascending: true }),
+      ]);
       const override = overrides.get(profile.id) ?? {};
       const defaults = defaultPermissions(profile);
       const permissions = mergePermissions(defaults, override);
+      const access = ticketAccessPayload(
+        profile,
+        permissions,
+        ticketAccessOverrides.get(profile.id) ?? { all: null, departments: {} }
+      );
 
       return {
         id: profile.id,
@@ -211,6 +254,10 @@ export const userDirectoryRouter = createRouter({
         permissions,
         defaults,
         overrides: override,
+        ...access,
+        ticketDepartments: ((roleRows ?? []) as BranchRoleRow[])
+          .filter((r) => r.isActive)
+          .map((r) => ({ name: r.name, color: r.color })),
       };
     }),
 
@@ -364,6 +411,91 @@ export const userDirectoryRouter = createRouter({
       return { success: true };
     }),
 
+  /**
+   * Replace the granular ticket access matrix for one user.
+   * `null` / omitted = follow the role default. Explicit "none" hides a
+   * department that would otherwise be visible by default.
+   */
+  setTicketAccess: mainAdminQuery
+    .input(
+      z.object({
+        id: z.string(),
+        all: z.enum(["none", "view", "edit"]).nullable().default(null),
+        departments: z
+          .record(z.string(), z.enum(["none", "view", "edit"]))
+          .default({}),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      const supabase = getSupabaseAdmin();
+      const { data: target } = await supabase
+        .from("profiles")
+        .select("*")
+        .eq("id", input.id)
+        .maybeSingle();
+      if (!target) throw new Error("User not found");
+
+      const profile = target as Profile;
+      const now = new Date().toISOString();
+
+      const rows: {
+        userId: string;
+        department: string;
+        level: TicketAccessLevel;
+        updatedAt: string;
+        updatedBy: string;
+      }[] = [];
+
+      if (input.all) {
+        rows.push({
+          userId: input.id,
+          department: ALL_DEPARTMENTS_KEY,
+          level: input.all,
+          updatedAt: now,
+          updatedBy: ctx.user.id,
+        });
+      }
+
+      for (const [rawDepartment, level] of Object.entries(input.departments)) {
+        const department = rawDepartment.trim();
+        if (!department || department === ALL_DEPARTMENTS_KEY) continue;
+        rows.push({
+          userId: input.id,
+          department,
+          level,
+          updatedAt: now,
+          updatedBy: ctx.user.id,
+        });
+      }
+
+      const { error: deleteError } = await supabase
+        .from("user_ticket_access")
+        .delete()
+        .eq("userId", input.id);
+      if (deleteError) throw new Error(deleteError.message);
+
+      if (rows.length) {
+        const { error } = await supabase.from("user_ticket_access").insert(rows);
+        if (error) throw new Error(error.message);
+      }
+
+      await createAuditLog({
+        userId: ctx.user.id,
+        userType: "admin",
+        userName: ctx.user.name || "Admin",
+        action: "update_user_ticket_access",
+        entityType: "profile",
+        entityId: input.id,
+        details: {
+          target: displayName(profile),
+          all: input.all,
+          departments: input.departments,
+        },
+      });
+
+      return { success: true };
+    }),
+
   /** Remove every override and fall back to the role defaults. */
   resetPermissions: mainAdminQuery
     .input(z.object({ id: z.string() }))
@@ -378,6 +510,13 @@ export const userDirectoryRouter = createRouter({
         .delete()
         .eq("userId", input.id);
       if (error) throw new Error(error.message);
+
+      // Ticket access is part of the same "back to defaults" reset.
+      const { error: accessError } = await supabase
+        .from("user_ticket_access")
+        .delete()
+        .eq("userId", input.id);
+      if (accessError) throw new Error(accessError.message);
 
       await createAuditLog({
         userId: ctx.user.id,

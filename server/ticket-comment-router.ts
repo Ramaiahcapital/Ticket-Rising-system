@@ -1,7 +1,8 @@
 import { z } from "zod";
 import { createRouter, authedQuery } from "./middleware.js";
 import { getSupabaseAdmin } from "./lib/supabase.js";
-import { createTimelineEntry, createNotification, canAdminAccessTicket, notifyRoleAdmins, hasTransferAccess, getUserEmail, portalButton } from "./lib/utils.js";
+import { createTimelineEntry, createNotification, notifyRoleAdmins, portalButton } from "./lib/utils.js";
+import { resolveTicketAccess } from "./lib/ticket-access-check.js";
 import { sendEmailFromUser } from "./email-service.js";
 
 function sanitizeHtml(html: string): string {
@@ -41,34 +42,9 @@ export const ticketCommentRouter = createRouter({
         .eq("id", input.ticketId)
         .maybeSingle();
       if (!ticket) throw new Error("Ticket not found");
-      let hasAccess = false;
-      if (ctx.user.type === "branch" && ticket.branchId === ctx.user.id) hasAccess = true;
-      else if (ctx.user.type === "admin" && canAdminAccessTicket(ctx.user, ticket.branchRole)) hasAccess = true;
-      else if (ctx.user.type === "cluster") {
-        const clusterId = (ctx.user as any).clusterId ?? null;
-        // Clusters can read comments on tickets they raised and on tickets raised
-        // by branches assigned to their cluster.
-        if (ticket.branchId === ctx.user.id) {
-          hasAccess = true;
-        } else if (clusterId) {
-          const { data: creator } = await supabase
-            .from("profiles")
-            .select("clusterId, role")
-            .eq("id", ticket.branchId)
-            .maybeSingle();
-          if (creator?.role === "branch" && creator.clusterId === clusterId) hasAccess = true;
-        }
+      if ((await resolveTicketAccess(ctx, ticket)) === "none") {
+        throw new Error("Access denied");
       }
-      if (!hasAccess) {
-        const email = await getUserEmail(ctx.user);
-        // Middle admin: view-only access to their monitored department's tickets.
-        if (ctx.user.type === "transfer") {
-          const monitorRole = (ctx.user as any).monitorRole ?? null;
-          if (monitorRole && ticket.branchRole === monitorRole) hasAccess = true;
-        }
-        if (await hasTransferAccess(ctx.user.id, email, input.ticketId)) hasAccess = true;
-      }
-      if (!hasAccess) throw new Error("Access denied");
 
       let query = supabase
         .from("ticket_comments")
@@ -113,19 +89,9 @@ export const ticketCommentRouter = createRouter({
         .eq("id", input.ticketId)
         .maybeSingle();
       if (!ticket) throw new Error("Ticket not found");
-      let hasAccess = false;
-      if (ctx.user.type === "branch" && ticket.branchId === ctx.user.id) hasAccess = true;
-      else if (ctx.user.type === "admin" && canAdminAccessTicket(ctx.user, ticket.branchRole)) hasAccess = true;
-      else if (ctx.user.type === "cluster") hasAccess = ticket.branchId === ctx.user.id;
-      else if (ctx.user.type === "transfer") {
-        const email = await getUserEmail(ctx.user);
-        if (await hasTransferAccess(ctx.user.id, email, input.ticketId)) hasAccess = true;
+      if ((await resolveTicketAccess(ctx, ticket)) !== "edit") {
+        throw new Error("Access denied");
       }
-      if (!hasAccess) {
-        const email = await getUserEmail(ctx.user);
-        if (await hasTransferAccess(ctx.user.id, email, input.ticketId)) hasAccess = true;
-      }
-      if (!hasAccess) throw new Error("Access denied");
 
       if ((ctx.user.type === "branch" || ctx.user.type === "transfer") && input.isInternal) {
         throw new Error("Branch and transfer users cannot create internal notes");
@@ -235,6 +201,16 @@ export const ticketCommentRouter = createRouter({
         .eq("id", input.id)
         .maybeSingle();
       if (!comment) throw new Error("Comment not found");
+
+      const { data: ticket } = await supabase
+        .from("tickets")
+        .select("*")
+        .eq("id", comment.ticketId)
+        .maybeSingle();
+      if (!ticket) throw new Error("Ticket not found");
+      if ((await resolveTicketAccess(ctx, ticket)) !== "edit") {
+        throw new Error("Access denied");
+      }
 
       if ((ctx.user.type === "branch" || ctx.user.type === "transfer") && comment.authorId !== ctx.user.id) {
         throw new Error("Access denied");

@@ -8,11 +8,7 @@ import {
   createNotification,
   createAuditLog,
   requireRoleExists,
-  getTicketScopeFilter,
-  canAdminAccessTicket,
   notifyRoleAdmins,
-  hasTransferAccess,
-  getUserEmail,
   newEmailStatus,
   recordEmailError,
   recordEmailFailure,
@@ -21,8 +17,13 @@ import {
 } from "./lib/utils.js";
 import { sendEmailFromUser } from "./email-service.js";
 import type { TrpcContext } from "./context.js";
-import { getUserDepartment } from "./lib/permissions.js";
 import { resolveTicketEmailRecipients } from "./lib/ticket-notifications.js";
+import { resolveTicketAccess } from "./lib/ticket-access-check.js";
+import {
+  canEditDepartment,
+  hasAllDepartmentAccess,
+  visibleDepartments,
+} from "./lib/ticket-access.js";
 
 function getActorName(ctx: { user: TrpcContext["user"] }): string {
   if (!ctx.user) return "Unknown";
@@ -36,6 +37,50 @@ function getActorName(ctx: { user: TrpcContext["user"] }): string {
     return ctx.user.name || "Cluster";
   }
   return ctx.user.name || "Admin";
+}
+
+function quoteFilterValue(value: string): string {
+  return `"${value.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`;
+}
+
+/** Ticket ids transferred to the signed-in user's email. */
+async function getTransferredTicketIds(ctx: TrpcContext): Promise<string[]> {
+  const email = ctx.user?.email?.toLowerCase().trim();
+  if (!email) return [];
+  const db = getSupabaseAdmin() as any;
+  const { data } = await db
+    .from("ticket_transfers")
+    .select("ticket_id")
+    .eq("to_email", email)
+    .eq("status", "accepted");
+  return (data ?? []).map((row: { ticket_id: string }) => row.ticket_id);
+}
+
+/**
+ * Narrow a ticket query to what the signed-in user may see:
+ * their own tickets, tickets transferred to them, and the departments
+ * configured in their ticket access matrix.
+ */
+function applyTicketVisibility(
+  query: any,
+  ctx: TrpcContext,
+  transferredIds: string[]
+): any {
+  if (!ctx.user) return query;
+  if (hasAllDepartmentAccess(ctx.ticketAccess)) return query;
+
+  const filters = [`createdBy.eq.${ctx.user.id}`];
+  if (ctx.user.type === "branch" || ctx.user.type === "cluster") {
+    filters.push(`branchId.eq.${ctx.user.id}`);
+  }
+  if (transferredIds.length) {
+    filters.push(`id.in.(${transferredIds.join(",")})`);
+  }
+  const departments = visibleDepartments(ctx.ticketAccess);
+  if (departments.length) {
+    filters.push(`branchRole.in.(${departments.map(quoteFilterValue).join(",")})`);
+  }
+  return query.or(filters.join(","));
 }
 
 export const ticketRouter = createRouter({
@@ -64,53 +109,10 @@ export const ticketRouter = createRouter({
 
       let query = supabase.from("tickets").select("*", { count: "exact" });
 
-      if (ctx.user.type === "branch") {
-        // Branch users normally see only their own tickets. If the Super Admin
-        // grants "view_department_tickets", they also see their department's
-        // tickets (read-only).
-        if (ctx.permissions?.view_department_tickets && ctx.user.branchRole) {
-          query = query.or(
-            `branchId.eq.${ctx.user.id},branchRole.eq.${ctx.user.branchRole}`
-          );
-        } else {
-          query = query.eq("branchId", ctx.user.id);
-        }
-      } else if (ctx.user.type === "cluster") {
-        query = query.eq("branchId", ctx.user.id);
-      } else if (ctx.user.type === "transfer") {
-        const db = supabase as any;
-        const { data: transfers } = await db
-          .from("ticket_transfers")
-          .select("ticket_id")
-          .eq("to_email", ctx.user.email?.toLowerCase().trim() || "")
-          .eq("status", "accepted");
-        const ticketIds = (transfers ?? []).map((t: any) => t.ticket_id);
+      if (params.branchId) query = query.eq("branchId", params.branchId);
 
-        // Transfer user promoted to middle admin also views their monitored department's tickets.
-        const monitorRole = (ctx.user as any).monitorRole ?? null;
-        const ownedByMe = `createdBy.eq.${ctx.user.id}`;
-
-        if (monitorRole && ticketIds.length === 0) {
-          query = query.or(`branchRole.eq.${monitorRole},${ownedByMe}`);
-          // Note: these are view-only (middle admin) — enforced by changeStatus/reply guards.
-        } else if (monitorRole) {
-          // Transferred tickets + monitored department tickets + tickets they raised.
-          query = query.or(`id.in.(${ticketIds.join(",")}),branchRole.eq.${monitorRole},${ownedByMe}`);
-        } else if (ticketIds.length === 0) {
-          // No transfers and no monitor scope — only the tickets they raised.
-          query = query.eq("createdBy", ctx.user.id);
-        } else {
-          query = query.or(`id.in.(${ticketIds.join(",")}),${ownedByMe}`);
-        }
-      } else if (params.branchId) {
-        query = query.eq("branchId", params.branchId);
-      }
-
-      const scope = getTicketScopeFilter(ctx.user);
-      if (scope) {
-        // Scoped admins see their department plus any tickets they raised themselves.
-        query = query.or(`branchRole.eq.${scope.branchRole},createdBy.eq.${ctx.user.id}`);
-      }
+      const transferredIds = await getTransferredTicketIds(ctx);
+      query = applyTicketVisibility(query, ctx, transferredIds);
 
       if (params.search) {
         query = query.or(
@@ -176,8 +178,13 @@ export const ticketRouter = createRouter({
 
     let query = supabase.from("tickets").select("branchRole");
     if (openStatus) query = query.eq("statusId", openStatus.id);
-    const scope = getTicketScopeFilter(ctx.user);
-    if (scope) query = query.eq("branchRole", scope.branchRole);
+
+    const seesAllDepartments = hasAllDepartmentAccess(ctx.ticketAccess);
+    const departments = visibleDepartments(ctx.ticketAccess);
+    if (!seesAllDepartments) {
+      if (!departments.length) return [];
+      query = query.in("branchRole", departments);
+    }
     const { data: tickets } = await query;
 
     const { data: roles } = await supabase
@@ -196,8 +203,8 @@ export const ticketRouter = createRouter({
       count: counts[r.name] ?? 0,
       color: r.color,
     }));
-    if (scope) {
-      result = result.filter((r) => r.name === scope.branchRole);
+    if (!seesAllDepartments) {
+      result = result.filter((r) => departments.includes(r.name));
     }
     return result;
   }),
@@ -219,33 +226,8 @@ export const ticketRouter = createRouter({
 
       let query = supabase.from("tickets").select("*", { count: "exact" });
 
-      if (ctx.user.type === "branch") {
-        // Branch users normally see only their own tickets. If the Super Admin
-        // grants "view_department_tickets", they also see their department's
-        // tickets (read-only).
-        if (ctx.permissions?.view_department_tickets && ctx.user.branchRole) {
-          query = query.or(
-            `branchId.eq.${ctx.user.id},branchRole.eq.${ctx.user.branchRole}`
-          );
-        } else {
-          query = query.eq("branchId", ctx.user.id);
-        }
-      } else if (ctx.user.type === "cluster") {
-        query = query.eq("branchId", ctx.user.id);
-      } else if (ctx.user.type === "transfer") {
-        const db = supabase as any;
-        const { data: transfers } = await db
-          .from("ticket_transfers")
-          .select("ticket_id")
-          .eq("to_email", ctx.user.email?.toLowerCase().trim() || "")
-          .eq("status", "accepted");
-        const ticketIds = (transfers ?? []).map((t: any) => t.ticket_id);
-        if (ticketIds.length === 0) return [];
-        query = query.in("id", ticketIds);
-      }
-
-      const scope = getTicketScopeFilter(ctx.user);
-      if (scope) query = query.eq("branchRole", scope.branchRole);
+      const transferredIds = await getTransferredTicketIds(ctx);
+      query = applyTicketVisibility(query, ctx, transferredIds);
 
       if (params.search) {
         query = query.or(
@@ -309,61 +291,17 @@ export const ticketRouter = createRouter({
     .input(z.object({ id: z.string() }))
     .query(async ({ ctx, input }) => {
       const supabase = getSupabaseAdmin();
-      const { data: ticket } = await supabase.from("tickets").select("*").eq("id", input.id).maybeSingle();
+      const { data: ticket } = await supabase
+        .from("tickets")
+        .select("*")
+        .eq("id", input.id)
+        .maybeSingle();
       if (!ticket) throw new Error("Ticket not found");
 
-      let hasAccess = false;
-      if (ticket.createdBy === ctx.user.id) hasAccess = true;
-      else if (ctx.user.type === "branch" && ticket.branchId === ctx.user.id) hasAccess = true;
-      else if (ctx.user.type === "admin" && canAdminAccessTicket(ctx.user, ticket.branchRole)) hasAccess = true;
-      else if (ctx.user.type === "cluster") {
-        const clusterId = (ctx.user as any).clusterId ?? null;
-        // A cluster can view tickets raised by branches assigned to it (view-only)
-        // and tickets it raised itself.
-        if (ticket.branchId === ctx.user.id) {
-          hasAccess = true;
-        } else if (clusterId) {
-          const { data: creator } = await supabase
-            .from("profiles")
-            .select("clusterId, role")
-            .eq("id", ticket.branchId)
-            .maybeSingle();
-          if (creator?.role === "branch" && creator.clusterId === clusterId) {
-            hasAccess = true;
-          }
-        }
-      } else if (ctx.user.type === "transfer") {
-        const email = await getUserEmail(ctx.user);
-        // View-only access as a middle admin (monitors their assigned department).
-        const monitorRole = (ctx.user as any).monitorRole ?? null;
-        if (monitorRole && ticket.branchRole === monitorRole) hasAccess = true;
-        if (await hasTransferAccess(ctx.user.id, email, input.id)) hasAccess = true;
-      }
-      if (!hasAccess) {
-        const email = await getUserEmail(ctx.user);
-        if (await hasTransferAccess(ctx.user.id, email, input.id)) hasAccess = true;
-      }
-      // Department viewers (e.g. a branch manager granted ticket access) can
-      // open tickets routed to their own department. Read-only.
-      if (!hasAccess && ctx.permissions?.view_department_tickets) {
-        const department = getUserDepartment(ctx.user);
-        if (department && ticket.branchRole === department) hasAccess = true;
-      }
-      if (!hasAccess) throw new Error("Access denied");
+      const accessLevel = await resolveTicketAccess(ctx, ticket);
+      if (accessLevel === "none") throw new Error("Access denied");
 
-      // Whether the current user can ACT on this ticket (reply/notify/change status).
-      // Clusters can only act on tickets they raised themselves — branch tickets
-      // are strictly view-only for them.
-      let canAct = false;
-      if (ticket.createdBy === ctx.user.id) canAct = true;
-      else if (ctx.user.type === "branch" && ticket.branchId === ctx.user.id) canAct = true;
-      else if (ctx.user.type === "admin" && canAdminAccessTicket(ctx.user, ticket.branchRole)) canAct = true;
-      else if (ctx.user.type === "cluster") canAct = ticket.branchId === ctx.user.id;
-      else if (ctx.user.type === "transfer") {
-        const email = await getUserEmail(ctx.user);
-        if (await hasTransferAccess(ctx.user.id, email, input.id)) canAct = true;
-      }
-
+      const canAct = accessLevel === "edit";
       const enriched = await enrichTicket(supabase, ticket);
       return { ...enriched, canAct };
     }),
@@ -378,12 +316,8 @@ export const ticketRouter = createRouter({
         .eq("ticketNumber", input.number)
         .maybeSingle();
       if (!ticket) throw new Error("Ticket not found");
-      if (ctx.user.type === "branch" && ticket.branchId !== ctx.user.id) {
-        throw new Error("Access denied");
-      }
-      if (ctx.user.type === "admin" && !canAdminAccessTicket(ctx.user, ticket.branchRole)) {
-        throw new Error("Access denied");
-      }
+      const accessLevel = await resolveTicketAccess(ctx, ticket);
+      if (accessLevel === "none") throw new Error("Access denied");
       return await enrichTicket(supabase, ticket);
     }),
 
@@ -560,13 +494,7 @@ export const ticketRouter = createRouter({
 
       const { data: ticket } = await supabase.from("tickets").select("*").eq("id", id).maybeSingle();
       if (!ticket) throw new Error("Ticket not found");
-      if (ctx.user.type === "branch" && ticket.branchId !== ctx.user.id) {
-        throw new Error("Access denied");
-      }
-      if (ctx.user.type === "admin" && !canAdminAccessTicket(ctx.user, ticket.branchRole)) {
-        throw new Error("Access denied");
-      }
-      if (ctx.user.type === "cluster" && ticket.branchId !== ctx.user.id) {
+      if ((await resolveTicketAccess(ctx, ticket)) !== "edit") {
         throw new Error("Access denied");
       }
 
@@ -606,19 +534,9 @@ export const ticketRouter = createRouter({
 
       const { data: ticket } = await supabase.from("tickets").select("*").eq("id", input.ticketId).maybeSingle();
       if (!ticket) throw new Error("Ticket not found");
-      let hasAccess = false;
-      if (ctx.user.type === "branch" && ticket.branchId === ctx.user.id) hasAccess = true;
-      else if (ctx.user.type === "admin" && canAdminAccessTicket(ctx.user, ticket.branchRole)) hasAccess = true;
-      else if (ctx.user.type === "cluster") hasAccess = ticket.branchId === ctx.user.id;
-      else if (ctx.user.type === "transfer") {
-        const email = await getUserEmail(ctx.user);
-        if (await hasTransferAccess(ctx.user.id, email, input.ticketId)) hasAccess = true;
+      if ((await resolveTicketAccess(ctx, ticket)) !== "edit") {
+        throw new Error("Access denied");
       }
-      if (!hasAccess) {
-        const email = await getUserEmail(ctx.user);
-        if (await hasTransferAccess(ctx.user.id, email, input.ticketId)) hasAccess = true;
-      }
-      if (!hasAccess) throw new Error("Access denied");
 
       const { data: oldStatus } = await supabase
         .from("ticket_statuses")
@@ -721,7 +639,7 @@ export const ticketRouter = createRouter({
 
       const { data: ticket } = await supabase.from("tickets").select("*").eq("id", input.ticketId).maybeSingle();
       if (!ticket) throw new Error("Ticket not found");
-      if (!canAdminAccessTicket(ctx.user, ticket.branchRole)) {
+      if (!canEditDepartment(ctx.ticketAccess, ticket.branchRole)) {
         throw new Error("Access denied");
       }
 
@@ -766,7 +684,7 @@ export const ticketRouter = createRouter({
     .mutation(async ({ ctx, input }) => {
       const supabase = getSupabaseAdmin();
       const { data: ticket } = await supabase.from("tickets").select("id, branchRole").eq("id", input.id).maybeSingle();
-      if (ticket && !canAdminAccessTicket(ctx.user, ticket.branchRole)) {
+      if (ticket && !canEditDepartment(ctx.ticketAccess, ticket.branchRole)) {
         throw new Error("Access denied");
       }
       const { error } = await supabase
@@ -798,7 +716,7 @@ export const ticketRouter = createRouter({
 
       for (const ticketId of input.ticketIds) {
         const { data: t } = await supabase.from("tickets").select("branchRole").eq("id", ticketId).maybeSingle();
-        if (t && !canAdminAccessTicket(ctx.user, t.branchRole)) {
+        if (t && !canEditDepartment(ctx.ticketAccess, t.branchRole)) {
           throw new Error("Access denied");
         }
         const { error } = await supabase
@@ -832,7 +750,7 @@ export const ticketRouter = createRouter({
 
       for (const ticketId of input.ticketIds) {
         const { data: t } = await supabase.from("tickets").select("branchRole").eq("id", ticketId).maybeSingle();
-        if (t && !canAdminAccessTicket(ctx.user, t.branchRole)) {
+        if (t && !canEditDepartment(ctx.ticketAccess, t.branchRole)) {
           throw new Error("Access denied");
         }
         const { error } = await supabase
@@ -945,6 +863,16 @@ export const ticketRouter = createRouter({
     )
     .mutation(async ({ ctx, input }) => {
       const supabase = getSupabaseAdmin();
+      const { data: ticket } = await supabase
+        .from("tickets")
+        .select("*")
+        .eq("id", input.ticketId)
+        .maybeSingle();
+      if (!ticket) throw new Error("Ticket not found");
+      if ((await resolveTicketAccess(ctx, ticket)) !== "edit") {
+        throw new Error("Access denied");
+      }
+
       const { data, error } = await supabase
         .from("ticket_attachments")
         .insert({
@@ -969,7 +897,7 @@ export const ticketRouter = createRouter({
     .mutation(async ({ ctx, input }) => {
       const supabase = getSupabaseAdmin();
       const { data: t } = await supabase.from("tickets").select("branchRole").eq("id", input.ticketId).maybeSingle();
-      if (t && !canAdminAccessTicket(ctx.user, t.branchRole)) {
+      if (t && !canEditDepartment(ctx.ticketAccess, t.branchRole)) {
         throw new Error("Access denied");
       }
       const { data: attachments } = await supabase
@@ -994,15 +922,9 @@ export const ticketRouter = createRouter({
         .eq("id", input.ticketId)
         .maybeSingle();
       if (!ticket) throw new Error("Ticket not found");
-
-      let hasAccess = false;
-      if (ctx.user.type === "admin" && canAdminAccessTicket(ctx.user, ticket.branchRole)) hasAccess = true;
-      else if (ctx.user.type === "cluster") hasAccess = ticket.branchId === ctx.user.id;
-      else if (ctx.user.type === "transfer") {
-        const email = await getUserEmail(ctx.user);
-        if (await hasTransferAccess(ctx.user.id, email, input.ticketId)) hasAccess = true;
+      if ((await resolveTicketAccess(ctx, ticket)) !== "edit") {
+        throw new Error("Access denied");
       }
-      if (!hasAccess) throw new Error("Access denied");
 
       const { data: branchProfile } = await supabase
         .from("profiles")
@@ -1060,7 +982,7 @@ export const ticketRouter = createRouter({
         .eq("id", input.ticketId)
         .maybeSingle();
       if (!ticket) throw new Error("Ticket not found");
-      if (!canAdminAccessTicket(ctx.user, ticket.branchRole)) {
+      if (!canEditDepartment(ctx.ticketAccess, ticket.branchRole)) {
         throw new Error("Access denied");
       }
 

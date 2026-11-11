@@ -2,8 +2,10 @@ import { z } from "zod";
 import { createRouter, permissionQuery } from "./middleware.js";
 import { getSupabaseAdmin } from "./lib/supabase.js";
 import type { TicketStatusRow, TicketPriorityRow, TicketCategoryRow, TicketRow, Profile } from "./lib/db-types.js";
-import { getTicketScopeFilter } from "./lib/utils.js";
-import { getUserDepartment } from "./lib/permissions.js";
+import {
+  hasAllDepartmentAccess,
+  visibleDepartments,
+} from "./lib/ticket-access.js";
 
 export const reportRouter = createRouter({
   generate: permissionQuery("reports")
@@ -19,8 +21,8 @@ export const reportRouter = createRouter({
     )
     .query(async ({ ctx, input }) => {
       const supabase = getSupabaseAdmin();
-      const scope = getTicketScopeFilter(ctx.user);
-      const department = getUserDepartment(ctx.user);
+      const seesAllDepartments = hasAllDepartmentAccess(ctx.ticketAccess);
+      const departments = visibleDepartments(ctx.ticketAccess);
 
       let query = supabase
         .from("tickets")
@@ -28,13 +30,13 @@ export const reportRouter = createRouter({
         .gte("createdAt", input.dateFrom)
         .lte("createdAt", input.dateTo);
 
-      if (scope) {
-        query = query.eq("branchRole", scope.branchRole);
-      } else if (ctx.user.type !== "admin") {
-        // Non-admins granted the "reports" feature are scoped to their own
-        // department, or to the tickets they raised when they have no bucket.
-        if (department) query = query.eq("branchRole", department);
-        else query = query.eq("createdBy", ctx.user.id);
+      if (!seesAllDepartments) {
+        if (departments.length) {
+          query = query.in("branchRole", departments);
+        } else {
+          // No department visibility: scope to the tickets they raised.
+          query = query.eq("createdBy", ctx.user.id);
+        }
       }
 
       if (input.branchIds && input.branchIds.length > 0) {
