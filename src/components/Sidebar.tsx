@@ -56,9 +56,8 @@ const transferNavBase: NavItem[] = [
   { label: "Email Settings", icon: Mail, path: "/email-settings" },
 ];
 const transferMonitorItem: NavItem = { label: "Monitor", icon: Eye, path: "/monitor" };
-const transferStationaryItem: NavItem = { label: "Stationary Admin", icon: Package, path: "/stationary/admin" };
+const stationaryAdminNavItem: NavItem = { label: "Stationary Admin", icon: Package, path: "/stationary/admin" };
 const transferStationaryOrderItem: NavItem = { label: "Stationary", icon: Package, path: "/stationary" };
-const branchStationaryAdminItem: NavItem = { label: "Stationary Admin", icon: Package, path: "/stationary/admin" };
 const transferCreateTicketItem: NavItem = { label: "Create Ticket", icon: Ticket, path: "/tickets/new" };
 
 const stationaryAdminNavItems: NavItem[] = [
@@ -259,30 +258,36 @@ export default function Sidebar({ isAdmin, mobile, onClose }: SidebarProps) {
             )}
           </>
         ) : isCluster ? (
-          clusterNavItems.filter((i) => i.path !== "/tickets/new" || canRaiseTicket).map((item) => {
-            const isActive = location.pathname === item.path;
-            return (
-              <button
-                key={item.path}
-                onClick={() => go(item.path)}
-                className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all ${
-                  isActive
-                    ? "bg-red-50 text-red-600 border-l-[3px] border-red-600"
-                    : "text-gray-600 hover:bg-gray-50 hover:text-gray-900"
-                }`}
-              >
-                <item.icon className={`w-5 h-5 ${isActive ? "text-red-600" : "text-gray-400"}`} />
-                {item.label}
-              </button>
+          (() => {
+            const items = clusterNavItems.filter(
+              (i) => i.path !== "/tickets/new" || canRaiseTicket
             );
-          })
+            if (hasPermission("stationary_admin")) items.push(stationaryAdminNavItem);
+            return items.map((item) => {
+              const isActive = location.pathname === item.path;
+              return (
+                <button
+                  key={item.path}
+                  onClick={() => go(item.path)}
+                  className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all ${
+                    isActive
+                      ? "bg-red-50 text-red-600 border-l-[3px] border-red-600"
+                      : "text-gray-600 hover:bg-gray-50 hover:text-gray-900"
+                  }`}
+                >
+                  <item.icon className={`w-5 h-5 ${isActive ? "text-red-600" : "text-gray-400"}`} />
+                  {item.label}
+                </button>
+              );
+            });
+          })()
         ) : isTransfer ? (
           (() => {
             const monitorRole = (user as any)?.monitorRole;
             const transferNavItems = [...transferNavBase];
             if (canRaiseTicket) transferNavItems.splice(1, 0, transferCreateTicketItem);
             if (hasPermission("stationary_order")) transferNavItems.push(transferStationaryOrderItem);
-            if (hasPermission("stationary_admin")) transferNavItems.push(transferStationaryItem);
+            if (hasPermission("stationary_admin")) transferNavItems.push(stationaryAdminNavItem);
             if (monitorRole) {
               transferNavItems.unshift(transferMonitorItem);
             }
@@ -311,7 +316,7 @@ export default function Sidebar({ isAdmin, mobile, onClose }: SidebarProps) {
               if (i.path === "/stationary") return hasPermission("stationary_order");
               return true;
             });
-            if (hasPermission("stationary_admin")) items.push(branchStationaryAdminItem);
+            if (hasPermission("stationary_admin")) items.push(stationaryAdminNavItem);
             return items.map((item) => {
             const isActive = location.pathname === item.path;
             return (
