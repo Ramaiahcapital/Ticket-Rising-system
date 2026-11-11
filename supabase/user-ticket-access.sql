@@ -36,3 +36,7 @@ CREATE POLICY "user_ticket_access_select_own"
   ON public.user_ticket_access
   FOR SELECT
   USING (auth.uid() = "userId");
+
+-- Make PostgREST pick up the new table immediately instead of returning
+-- "Could not find the table ... in the schema cache" until the next reload.
+NOTIFY pgrst, 'reload schema';
