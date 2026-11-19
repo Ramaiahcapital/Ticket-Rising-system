@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router";
 import { trpc } from "@/providers/trpc";
 import { useAuth } from "@/hooks/useAuth";
@@ -36,6 +36,9 @@ export default function CreateTicket() {
   const [files, setFiles] = useState<File[]>([]);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [isUploading, setIsUploading] = useState(false);
+  // React state is batched, so `isPending` alone can miss two clicks in the
+  // same tick. This ref blocks the second submit synchronously.
+  const submittingRef = useRef(false);
 
   const utils = trpc.useUtils();
 
@@ -130,7 +133,10 @@ export default function CreateTicket() {
 
   const createTicket = trpc.ticket.create.useMutation({
     onSuccess: async (data) => {
-      if (files.length > 0) {
+      let attachmentError = "";
+      // A collapsed retry must not upload the same files onto the ticket
+      // again, otherwise the ticket ends up with duplicate attachments.
+      if (!(data as any).duplicate && files.length > 0) {
         setIsUploading(true);
         try {
           for (const file of files) {
@@ -150,25 +156,39 @@ export default function CreateTicket() {
             });
           }
         } catch (err: any) {
-          setErrors({ form: err.message || "Upload failed" });
+          attachmentError = err.message || "Upload failed";
+        } finally {
           setIsUploading(false);
-          return;
         }
       }
+
       utils.ticket.list.invalidate();
       utils.dashboard.branchStats.invalidate();
       utils.dashboard.adminStats.invalidate();
 
+      const notices: string[] = [];
+      if ((data as any).duplicate) {
+        notices.push("This ticket was already submitted. Opening the existing ticket.");
+      }
+      if (attachmentError) {
+        notices.push(
+          `Ticket ${data.ticketNumber} was created, but the attachments could not be uploaded: ${attachmentError}\nYou can add them from the ticket page.`
+        );
+      }
       const email = (data as any)?.emailStatus;
       if (email && email.failed > 0) {
-        alert(
+        notices.push(
           `Ticket ${data.ticketNumber} was created, but the email notification could not be sent.\n\nReason:\n${(email.errors || []).join("\n")}\n\nConnect your Gmail under Email Settings to fix this.`
         );
       }
+      if (notices.length) alert(notices.join("\n\n"));
 
+      // Always leave the form after a successful create. Returning to the
+      // still-filled form invited a second click and a duplicate ticket.
       navigate(`/tickets/${data.id}`);
     },
     onError: (err) => {
+      submittingRef.current = false;
       setErrors({ form: err.message });
     },
   });
@@ -196,7 +216,8 @@ export default function CreateTicket() {
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedRole) { setErrors({ form: "Select your role" }); return; }
-    if (!validate() || createTicket.isPending) return;
+    if (submittingRef.current || !validate() || createTicket.isPending) return;
+    submittingRef.current = true;
     createTicket.mutate({
       subject,
       description,

@@ -17,7 +17,13 @@ export function portalButton(label = "Open Portal"): string {
   return `<a href="${PORTAL_URL}" style="display:inline-block;margin:16px 0;padding:12px 24px;background:#DC2626;color:#fff;text-decoration:none;border-radius:6px;font-weight:bold;">${label}</a>`;
 }
 
-// Generate next ticket number based on format setting
+/**
+ * Generate the next ticket number using an optimistic compare-and-swap on the
+ * counter row. Reading and then blindly writing the counter let two concurrent
+ * submissions receive the same number (the second insert then failed on the
+ * unique ticketNumber constraint). Only the request whose conditional update
+ * succeeds owns that number; the others retry with the fresh value.
+ */
 export async function generateTicketNumber(): Promise<string> {
   const supabase = getSupabaseAdmin();
 
@@ -26,27 +32,42 @@ export async function generateTicketNumber(): Promise<string> {
     .select("value")
     .eq("key", "ticket_number_format")
     .maybeSingle();
-  const { data: counterRows } = await supabase
-    .from("system_settings")
-    .select("value")
-    .eq("key", "ticket_number_counter")
-    .maybeSingle();
 
   const format = formatRows?.value || "RC-YYYY-XXXXXX";
-  let counter = parseInt(counterRows?.value || "0", 10);
-  counter++;
-
   const year = new Date().getFullYear().toString();
-  const ticketNumber = format
-    .replace("YYYY", year)
-    .replace("XXXXXX", counter.toString().padStart(6, "0"));
+  const formatNumber = (counter: number) =>
+    format.replace("YYYY", year).replace("XXXXXX", counter.toString().padStart(6, "0"));
 
-  await supabase
-    .from("system_settings")
-    .update({ value: counter.toString() })
-    .eq("key", "ticket_number_counter");
+  for (let attempt = 0; attempt < 10; attempt++) {
+    const { data: counterRows } = await supabase
+      .from("system_settings")
+      .select("value")
+      .eq("key", "ticket_number_counter")
+      .maybeSingle();
 
-  return ticketNumber;
+    if (!counterRows) {
+      // Very old projects may be missing the seed row. Create it once.
+      const { error } = await supabase
+        .from("system_settings")
+        .insert({ key: "ticket_number_counter", value: "1" });
+      if (!error) return formatNumber(1);
+      continue; // another request created it first; read it on the next pass
+    }
+
+    const current = parseInt(counterRows.value, 10) || 0;
+    const next = current + 1;
+
+    const { data: updated } = await supabase
+      .from("system_settings")
+      .update({ value: next.toString() })
+      .eq("key", "ticket_number_counter")
+      .eq("value", counterRows.value)
+      .select("key");
+
+    if (updated?.length) return formatNumber(next);
+  }
+
+  throw new Error("Could not allocate a ticket number. Please try again.");
 }
 
 // Create audit log entry

@@ -345,9 +345,33 @@ export const ticketRouter = createRouter({
         await requireRoleExists(supabase, input.branchRole);
       }
 
-      const ticketNumber = await generateTicketNumber();
-
       const subject = input.subject.trim();
+
+      // Idempotency guard. A double-click, a network retry, or a page reload
+      // while the first request is still responding must not create a second
+      // ticket with the same content. Only requests within this short window
+      // are collapsed; a genuinely new ticket raised later is still allowed.
+      const dedupeSince = new Date(Date.now() - 5 * 60 * 1000).toISOString();
+      const { data: recentDuplicate } = await supabase
+        .from("tickets")
+        .select("id, ticketNumber")
+        .eq("createdBy", ctx.user.id)
+        .eq("subject", subject)
+        .eq("description", input.description)
+        .gte("createdAt", dedupeSince)
+        .order("createdAt", { ascending: false })
+        .limit(1);
+
+      if (recentDuplicate?.length) {
+        return {
+          id: recentDuplicate[0].id,
+          ticketNumber: recentDuplicate[0].ticketNumber,
+          emailStatus: newEmailStatus(),
+          duplicate: true,
+        };
+      }
+
+      const ticketNumber = await generateTicketNumber();
 
       const { data: defaultStatuses } = await supabase
         .from("ticket_statuses")
@@ -473,7 +497,7 @@ export const ticketRouter = createRouter({
         details: { emailStatus },
       });
 
-      return { id: ticketId, ticketNumber, emailStatus };
+      return { id: ticketId, ticketNumber, emailStatus, duplicate: false };
     }),
 
   update: authedQuery
