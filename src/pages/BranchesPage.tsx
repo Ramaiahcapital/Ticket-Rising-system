@@ -1,4 +1,5 @@
-import { useState, useMemo } from "react";
+﻿import { useState, useMemo } from "react";
+import { keepPreviousData } from "@tanstack/react-query";
 import { trpc } from "@/providers/trpc";
 import { useBranchRoles } from "@/hooks/useBranchRoles";
 import {
@@ -8,7 +9,10 @@ import {
 export default function BranchesPage() {
   const utils = trpc.useUtils();
   const { getColor } = useBranchRoles();
-  const { data, isLoading } = trpc.branch.list.useQuery({ page: 1, limit: 100 });
+  const { data, isLoading, isFetching } = trpc.branch.list.useQuery(
+    { page: 1, limit: 100 },
+    { placeholderData: keepPreviousData }
+  );
   const createBranch = trpc.branch.create.useMutation({ onSuccess: () => { utils.branch.list.invalidate(); utils.branch.listAll.invalidate(); close(); } });
   const updateBranch = trpc.branch.update.useMutation({ onSuccess: () => { utils.branch.list.invalidate(); utils.branch.listAll.invalidate(); close(); } });
   const deleteBranch = trpc.branch.delete.useMutation({ onSuccess: () => { utils.branch.list.invalidate(); utils.branch.listAll.invalidate(); } });
@@ -130,8 +134,13 @@ export default function BranchesPage() {
         <button onClick={() => open()} className="flex items-center gap-1 px-3 py-1.5 bg-red-600 text-white text-xs font-medium rounded-lg hover:bg-red-700"><Plus className="w-3 h-3" /> Add Branch</button>
       </div>
 
+      {isFetching && !isLoading && (
+        <div className="flex items-center gap-2 px-3 py-2 text-xs text-gray-500 bg-white rounded-xl border border-gray-200">
+          <Loader2 className="w-3.5 h-3.5 animate-spin" /> Updating...
+        </div>
+      )}
       {isLoading ? (
-        <div className="p-8 text-center text-gray-400 text-sm bg-white rounded-xl border border-gray-200">Loading…</div>
+        <div className="p-8 text-center text-gray-400 text-sm bg-white rounded-xl border border-gray-200">Loading...</div>
       ) : data?.items.length === 0 ? (
         <div className="p-12 text-center text-gray-400 text-sm bg-white rounded-xl border border-gray-200">No branches yet. Click "Add Branch" to create one.</div>
       ) : (
@@ -143,7 +152,7 @@ export default function BranchesPage() {
                 <div className="p-4 border-b border-gray-200 flex items-center justify-between gap-2">
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-medium text-gray-800 flex items-center gap-2"><Building2 className="w-4 h-4 text-gray-400 shrink-0" />{b.name}</p>
-                    <p className="text-xs text-gray-500 font-mono">{b.code}{b.contactPerson ? ` · ${b.contactPerson}` : ""}{b.address ? ` · ${b.address}` : ""}</p>
+                    <p className="text-xs text-gray-500 font-mono">{b.code}{b.contactPerson ? ` Â· ${b.contactPerson}` : ""}{b.address ? ` Â· ${b.address}` : ""}</p>
                   </div>
                   <div className="flex gap-1 shrink-0">
                     <button onClick={() => open(b)} className="p-1.5 hover:bg-blue-50 rounded-lg text-gray-400 hover:text-blue-600"><Pencil className="w-3.5 h-3.5" /></button>
@@ -225,7 +234,7 @@ export default function BranchesPage() {
               <div>
                 <label className="block text-xs font-medium text-gray-700 mb-1">Branch *</label>
                 <select value={userForm.branchId} onChange={e => setUserForm({ ...userForm, branchId: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:border-red-500 outline-none bg-white">
-                  <option value="">— Select Branch —</option>
+                  <option value="">â€” Select Branch â€”</option>
                   {data?.items.map(b => <option key={b.id} value={b.id}>{b.name} ({b.code})</option>)}
                 </select>
                 {userErrors.branchId && <p className="text-[10px] text-red-500 mt-1">{userErrors.branchId}</p>}

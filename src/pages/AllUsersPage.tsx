@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { keepPreviousData } from "@tanstack/react-query";
 import { trpc } from "@/providers/trpc";
 import { useAuth } from "@/hooks/useAuth";
 import {
@@ -299,7 +300,7 @@ export default function AllUsersPage() {
   const [statusFilter, setStatusFilter] = useState("all");
   const limit = 20;
 
-  const { data, isLoading } = trpc.userDirectory.list.useQuery({
+  const { data, isLoading, isFetching } = trpc.userDirectory.list.useQuery({
     page,
     limit,
     search: search.trim() || undefined,
@@ -307,7 +308,7 @@ export default function AllUsersPage() {
     department: departmentFilter === "all" ? undefined : departmentFilter,
     access: accessFilter,
     status: statusFilter as "all" | "active" | "inactive",
-  });
+  }, { placeholderData: keepPreviousData });
 
   const rows = (data?.items ?? []) as DirectoryUser[];
   const departments = data?.departments ?? [];
@@ -667,6 +668,11 @@ export default function AllUsersPage() {
       </div>
 
       <div className="overflow-hidden rounded-xl border border-gray-200 bg-white">
+        {isFetching && !isLoading && (
+          <div className="flex items-center gap-2 px-4 py-2 text-xs text-gray-500 bg-gray-50 border-b border-gray-200">
+            <Loader2 className="w-3.5 h-3.5 animate-spin" /> Updating…
+          </div>
+        )}
         <div className="overflow-x-auto">
           <table className="w-full">
             <thead>

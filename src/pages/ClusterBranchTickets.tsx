@@ -1,8 +1,9 @@
 import { useState } from "react";
 import { useNavigate } from "react-router";
+import { keepPreviousData } from "@tanstack/react-query";
 import { trpc } from "@/providers/trpc";
 import { useBranchRoles } from "@/hooks/useBranchRoles";
-import { Search, Filter, Eye, Ticket, Building2, AlertTriangle } from "lucide-react";
+import { Search, Filter, Eye, Ticket, Building2, AlertTriangle, Loader2 } from "lucide-react";
 
 export default function ClusterBranchTickets() {
   const navigate = useNavigate();
@@ -16,7 +17,7 @@ export default function ClusterBranchTickets() {
   const [dateTo, setDateTo] = useState("");
   const [showFilters, setShowFilters] = useState(false);
 
-  const { data: ticketsData, isLoading } = trpc.cluster.branchTickets.useQuery({
+  const { data: ticketsData, isLoading, isFetching } = trpc.cluster.branchTickets.useQuery({
     page,
     limit,
     search: search || undefined,
@@ -24,7 +25,7 @@ export default function ClusterBranchTickets() {
     branchRole: branchRole || undefined,
     dateFrom: dateFrom || undefined,
     dateTo: dateTo || undefined,
-  });
+  }, { placeholderData: keepPreviousData });
   const { data: statuses } = trpc.ticketStatus.listEnabled.useQuery();
 
   const getStatusBadge = (statusName: string, color: string) => (
@@ -155,6 +156,11 @@ export default function ClusterBranchTickets() {
 
       {/* Table */}
       <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+        {isFetching && !isLoading && (
+          <div className="flex items-center gap-2 px-4 py-2 text-xs text-gray-500 bg-gray-50 border-b border-gray-200">
+            <Loader2 className="w-3.5 h-3.5 animate-spin" /> Updating…
+          </div>
+        )}
         <div className="overflow-x-auto">
           <table className="w-full">
             <thead>

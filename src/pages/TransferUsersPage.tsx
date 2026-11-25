@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { keepPreviousData } from "@tanstack/react-query";
 import { trpc } from "@/providers/trpc";
 import { Plus, Pencil, Trash2, X, Loader2, Users, Search, KeyRound, ToggleLeft, ToggleRight, Package, Eye } from "lucide-react";
 import { useBranchRoles } from "@/hooks/useBranchRoles";
@@ -14,7 +15,10 @@ export default function TransferUsersPage() {
   const [resetError, setResetError] = useState("");
 
   const utils = trpc.useUtils();
-  const { data, isLoading } = trpc.transferUser.list.useQuery({ search: search || undefined });
+  const { data, isLoading, isFetching } = trpc.transferUser.list.useQuery(
+    { search: search || undefined },
+    { placeholderData: keepPreviousData }
+  );
   const { data: roles } = trpc.branchRole.list.useQuery();
   const activeRoles = (roles ?? []).filter((r) => r.isActive);
   const { getColor } = useBranchRoles();
@@ -121,6 +125,11 @@ export default function TransferUsersPage() {
 
       {/* Table */}
       <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+        {isFetching && !isLoading && (
+          <div className="flex items-center gap-2 px-4 py-2 text-xs text-gray-500 bg-gray-50 border-b border-gray-200">
+            <Loader2 className="w-3.5 h-3.5 animate-spin" /> Updating…
+          </div>
+        )}
         <div className="overflow-x-auto">
           <table className="w-full">
             <thead>

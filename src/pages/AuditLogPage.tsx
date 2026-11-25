@@ -1,6 +1,7 @@
 import { useState } from "react";
+import { keepPreviousData } from "@tanstack/react-query";
 import { trpc } from "@/providers/trpc";
-import { ChevronLeft, ChevronRight, Filter } from "lucide-react";
+import { ChevronLeft, ChevronRight, Filter, Loader2 } from "lucide-react";
 import type { AuditLogRow } from "../../server/lib/db-types.js";
 
 export default function AuditLogPage() {
@@ -8,7 +9,10 @@ export default function AuditLogPage() {
   const [action, setAction] = useState("");
   const limit = 25;
 
-  const { data, isLoading } = trpc.auditLog.list.useQuery({ page, limit, action: action || undefined });
+  const { data, isLoading, isFetching } = trpc.auditLog.list.useQuery(
+    { page, limit, action: action || undefined },
+    { placeholderData: keepPreviousData }
+  );
 
   const actionColors: Record<string, string> = {
     create: "bg-green-100 text-green-700",
@@ -46,6 +50,11 @@ export default function AuditLogPage() {
       </div>
 
       <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+        {isFetching && !isLoading && (
+          <div className="flex items-center gap-2 px-4 py-2 text-xs text-gray-500 bg-gray-50 border-b border-gray-200">
+            <Loader2 className="w-3.5 h-3.5 animate-spin" /> Updating…
+          </div>
+        )}
         <div className="overflow-x-auto">
           <table className="w-full">
             <thead>

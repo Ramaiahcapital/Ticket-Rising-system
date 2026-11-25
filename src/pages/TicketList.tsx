@@ -1,5 +1,6 @@
 import { useState, useCallback } from "react";
 import { useNavigate, useSearchParams } from "react-router";
+import { keepPreviousData } from "@tanstack/react-query";
 import { trpc } from "@/providers/trpc";
 import { useAuth } from "@/hooks/useAuth";
 import { useBranchRoles } from "@/hooks/useBranchRoles";
@@ -49,7 +50,7 @@ export default function TicketList() {
   const [isExporting, setIsExporting] = useState(false);
   const [activeBucket, setActiveBucket] = useState<string>(deptParam ?? "all");
 
-  const { data: ticketsData, isLoading } = trpc.ticket.list.useQuery({
+  const { data: ticketsData, isLoading, isFetching } = trpc.ticket.list.useQuery({
     page,
     limit,
     search: search || undefined,
@@ -58,6 +59,8 @@ export default function TicketList() {
     branchRole: branchRole || undefined,
     dateFrom: dateFrom || undefined,
     dateTo: dateTo || undefined,
+  }, {
+    placeholderData: keepPreviousData,
   });
 
   const { data: statuses } = trpc.ticketStatus.listEnabled.useQuery();
@@ -309,6 +312,12 @@ export default function TicketList() {
 
       {/* Table */}
       <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+        {isFetching && !isLoading && (
+          <div className="flex items-center gap-2 px-4 py-2 text-xs text-gray-500 bg-gray-50 border-b border-gray-200">
+            <Loader2 className="w-3.5 h-3.5 animate-spin" />
+            Updating…
+          </div>
+        )}
         <div className="overflow-x-auto">
           <table className="w-full">
             <thead>

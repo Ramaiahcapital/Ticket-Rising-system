@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { keepPreviousData } from "@tanstack/react-query";
 import { trpc } from "@/providers/trpc";
 import { Loader2, Search, Ticket, Users, CheckCircle2, XCircle } from "lucide-react";
 
@@ -21,7 +22,10 @@ export default function TicketAccess() {
   const [search, setSearch] = useState("");
   const [roleFilter, setRoleFilter] = useState<string>("all");
 
-  const { data: users, isLoading } = trpc.adminUser.listTicketAccess.useQuery({ search: search || undefined });
+  const { data: users, isLoading, isFetching } = trpc.adminUser.listTicketAccess.useQuery(
+    { search: search || undefined },
+    { placeholderData: keepPreviousData }
+  );
 
   const setTicketAccess = trpc.adminUser.setTicketAccess.useMutation({
     onSuccess: () => utils.adminUser.listTicketAccess.invalidate(),
@@ -90,6 +94,11 @@ export default function TicketAccess() {
       </div>
 
       <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+        {isFetching && !isLoading && (
+          <div className="flex items-center gap-2 px-4 py-2 text-xs text-gray-500 bg-gray-50 border-b border-gray-200">
+            <Loader2 className="w-3.5 h-3.5 animate-spin" /> Updating…
+          </div>
+        )}
         <div className="overflow-x-auto">
           <table className="w-full">
             <thead>

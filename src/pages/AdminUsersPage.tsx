@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { keepPreviousData } from "@tanstack/react-query";
 import { trpc } from "@/providers/trpc";
 import {
   Plus, Pencil, Trash2, X, Loader2, ToggleLeft, ToggleRight, KeyRound, UserCog, Ticket,
@@ -14,7 +15,10 @@ export default function AdminUsersPage() {
   const [tempPassword, setTempPassword] = useState("");
 
   const utils = trpc.useUtils();
-  const { data: users, isLoading } = trpc.adminUser.list.useQuery({ page: 1, limit: 100, status: "all" });
+  const { data: users, isLoading, isFetching } = trpc.adminUser.list.useQuery(
+    { page: 1, limit: 100, status: "all" },
+    { placeholderData: keepPreviousData }
+  );
   const { data: roles } = trpc.branchRole.list.useQuery();
   const activeRoles = (roles ?? []).filter((r) => r.isActive);
 
@@ -102,6 +106,11 @@ export default function AdminUsersPage() {
       </div>
 
       <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+        {isFetching && !isLoading && (
+          <div className="flex items-center gap-2 px-4 py-2 text-xs text-gray-500 bg-gray-50 border-b border-gray-200">
+            <Loader2 className="w-3.5 h-3.5 animate-spin" /> Updating…
+          </div>
+        )}
         <div className="overflow-x-auto">
           <table className="w-full">
             <thead>
