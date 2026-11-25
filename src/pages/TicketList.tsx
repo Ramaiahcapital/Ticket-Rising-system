@@ -8,6 +8,29 @@ import {
 } from "lucide-react";
 import * as XLSX from "xlsx";
 
+type PageItem = number | "ellipsis";
+
+/** Show a compact window around the current page plus the first and last pages. */
+function getPageItems(current: number, total: number): PageItem[] {
+  if (total <= 5) return Array.from({ length: total }, (_, i) => i + 1);
+
+  const pages = new Set<number>([1, total]);
+  for (let p = current - 1; p <= current + 1; p++) {
+    if (p >= 1 && p <= total) pages.add(p);
+  }
+  // Keep three numbered buttons visible near either end: 1 2 3 … last
+  if (current <= 2) pages.add(3);
+  if (current >= total - 1) pages.add(total - 2);
+
+  const sorted = [...pages].sort((a, b) => a - b);
+  const items: PageItem[] = [];
+  sorted.forEach((p, index) => {
+    if (index > 0 && p - sorted[index - 1] > 1) items.push("ellipsis");
+    items.push(p);
+  });
+  return items;
+}
+
 export default function TicketList() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
@@ -394,29 +417,39 @@ export default function TicketList() {
               <button
                 onClick={() => setPage((p) => Math.max(1, p - 1))}
                 disabled={page <= 1}
+                aria-label="Previous page"
                 className="px-3 py-1.5 border border-gray-300 text-sm font-medium rounded-lg hover:bg-gray-50 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
               >
                 ‹
               </button>
-              {Array.from({ length: ticketsData.totalPages }).map((_, i) => {
-                const p = i + 1;
-                return (
+              {getPageItems(page, ticketsData.totalPages).map((item, index) =>
+                item === "ellipsis" ? (
+                  <span
+                    key={`ellipsis-${index}`}
+                    className="min-w-[2rem] px-1 text-center text-sm text-gray-400"
+                  >
+                    …
+                  </span>
+                ) : (
                   <button
-                    key={p}
-                    onClick={() => setPage(p)}
+                    key={item}
+                    onClick={() => setPage(item)}
+                    aria-label={`Page ${item}`}
+                    aria-current={item === page ? "page" : undefined}
                     className={`min-w-[2rem] px-2.5 py-1.5 text-sm font-medium rounded-lg transition-colors ${
-                      p === page
+                      item === page
                         ? "bg-red-600 text-white"
                         : "border border-gray-300 text-gray-700 hover:bg-gray-50"
                     }`}
                   >
-                    {p}
+                    {item}
                   </button>
-                );
-              })}
+                )
+              )}
               <button
                 onClick={() => setPage((p) => Math.min(ticketsData.totalPages, p + 1))}
                 disabled={page >= ticketsData.totalPages}
+                aria-label="Next page"
                 className="px-3 py-1.5 border border-gray-300 text-sm font-medium rounded-lg hover:bg-gray-50 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
               >
                 ›
